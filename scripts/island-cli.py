@@ -1,0 +1,1102 @@
+#!/usr/bin/env python3
+"""
+Dynamic Island Developer CLI & Multi-Agent MCP Integration
+Send live AI agent updates, track terminal build commands, trigger notifications,
+and install integrations for Antigravity, Cursor, Claude Code, Windsurf, and OpenCode.
+"""
+
+import os
+import sys
+import json
+import time
+import shutil
+import socket
+import argparse
+import subprocess
+
+AGENT_GUIDELINES_MD = """# Linux Dynamic Island Integration
+
+You have direct integration with the user's floating Linux Dynamic Island desktop companion via the `dynamic-island` MCP server and `island-cli`.
+
+## Best Practices:
+1. **Interactive Questions, Prompts & Permissions**:
+   - Whenever you ask the user a question, prompt for clarification, or wait for human permission/action, you MUST notify the Dynamic Island:
+     - Via MCP tool: `island_prompt_user(question="...")` or `island_request_review(message="...")`
+     - Or via CLI: `island-cli agent --state review --message "Action required: <question>"`
+     - This immediately highlights the amber action card and pops an alert banner on the user's desktop screen!
+2. **Interactive Code Review Sign-off**:
+   - When completing substantial refactors or edits and requesting user review, run with `--wait`:
+     ```bash
+     island-cli agent --state review --wait --message "Changes ready for approval" --files "<changed_files>"
+     ```
+   - When running via `run_command` in an AI agent, set `WaitMsBeforeAsync: 500`. The command will continue waiting in the background as a task. When the user clicks "Approve & Apply" or "Discard" on their Dynamic Island desktop, the task completes (exit code 0 on approve, exit code 1 on discard) and reactively wakes you up!
+   - Note: The user may also choose to reply directly in the chat UI.
+3. **Long-Running Builds & Tests**:
+   - For commands taking more than a few seconds (e.g. `npm run build`, `cargo test`, `docker build`), prefer wrapping execution with `island-cli build --run "<command>"` or notify when finished:
+     ```bash
+     island-cli build --run "<command>"
+     ```
+4. **Live Status & Notifications**:
+   - Keep the user aware of background activity via `island_update_status` or `island-cli agent --state working --message "..."`.
+   - Send completion banners via `island_notify` or `island-cli notify "Title" "Message"`.
+"""
+
+ANTIGRAVITY_PLUGIN_JSON = """{
+  "name": "dynamic-island",
+  "version": "0.1.0",
+  "description": "Real-time AI Agent status, build tracking, and notification integration for Linux Dynamic Island"
+}
+"""
+
+ANTIGRAVITY_HOOKS_JSON = """{
+  "dynamic-island": {
+    "enabled": true,
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "island-cli hook pre-invocation",
+        "timeout": 5
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "island-cli hook pre-tool",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "island-cli hook stop",
+        "timeout": 5
+      }
+    ]
+  }
+}
+"""
+
+def get_socket_path():
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime_dir:
+        return os.path.join(runtime_dir, "dynamic-island.sock")
+    return f"/tmp/dynamic-island-{os.getuid()}.sock"
+
+def send_ipc(payload):
+    sock_path = get_socket_path()
+    if not os.path.exists(sock_path):
+        if os.path.exists("/tmp/dynamic-island.sock"):
+            sock_path = "/tmp/dynamic-island.sock"
+        else:
+            return False
+
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(0.3)
+            client.connect(sock_path)
+            message = json.dumps(payload) + "\n"
+            client.sendall(message.encode("utf-8"))
+            resp = client.recv(1024).decode("utf-8").strip()
+            if resp:
+                data = json.loads(resp)
+                return data.get("ok", False)
+            return True
+    except Exception:
+        return False
+
+def send_ipc_wait(payload, timeout=305):
+    sock_path = get_socket_path()
+    if not os.path.exists(sock_path):
+        if os.path.exists("/tmp/dynamic-island.sock"):
+            sock_path = "/tmp/dynamic-island.sock"
+        else:
+            print(f"[island-cli] Dynamic Island socket not found at {sock_path}. Is dynamic-island running?", file=sys.stderr)
+            return {"ok": False, "error": "socket_not_found"}
+
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(float(timeout))
+            client.connect(sock_path)
+            message = json.dumps(payload) + "\n"
+            client.sendall(message.encode("utf-8"))
+            resp = client.recv(2048).decode("utf-8").strip()
+            if resp:
+                return json.loads(resp)
+            return {"ok": False, "error": "empty_response"}
+    except socket.timeout:
+        return {"ok": False, "decision": "timeout", "error": "timed out waiting for user response"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def get_full_dev_status():
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+    state_file = os.path.join(runtime_dir, "dynamic-island-state.json") if runtime_dir else f"/tmp/dynamic-island-state-{os.getuid()}.json"
+    if os.path.exists(state_file):
+        try:
+            with open(state_file, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+
+    try:
+        sock_path = get_socket_path()
+        if os.path.exists(sock_path):
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                client.settimeout(0.3)
+                client.connect(sock_path)
+                client.sendall(b'{"target":"status"}\n')
+                resp = client.recv(4096).decode("utf-8").strip()
+                if resp:
+                    return json.loads(resp)
+    except Exception:
+        pass
+    return None
+
+def get_current_agent_state():
+    data = get_full_dev_status()
+    if data:
+        return data.get("agent", {}).get("state")
+    return None
+
+def get_last_review_decision():
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+    rev_file = os.path.join(runtime_dir, "dynamic-island-review.json") if runtime_dir else f"/tmp/dynamic-island-review-{os.getuid()}.json"
+    if os.path.exists(rev_file):
+        try:
+            with open(rev_file, "r") as f:
+                data = json.load(f)
+                ts = data.get("timestamp", 0)
+                if time.time() - ts < 300:
+                    return data.get("decision", "none")
+        except Exception:
+            pass
+
+    try:
+        sock_path = get_socket_path()
+        if os.path.exists(sock_path):
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                client.settimeout(0.3)
+                client.connect(sock_path)
+                client.sendall(b'{"target":"decision"}\n')
+                resp = client.recv(1024).decode("utf-8").strip()
+                if resp:
+                    data = json.loads(resp)
+                    return data.get("decision", "none")
+    except Exception:
+        pass
+    return "none"
+
+def cmd_agent(args):
+    if getattr(args, "approve", False):
+        success = send_ipc({"target": "review_decision", "decision": True})
+        if success:
+            print("✓ Review APPROVED")
+            return 0
+        else:
+            print("✗ Failed to send approval via IPC", file=sys.stderr)
+            return 1
+
+    if getattr(args, "reject", False):
+        success = send_ipc({"target": "review_decision", "decision": False})
+        if success:
+            print("✓ Review DISCARDED / REJECTED")
+            return 0
+        else:
+            print("✗ Failed to send rejection via IPC", file=sys.stderr)
+            return 1
+
+    if getattr(args, "decision", False):
+        dec = get_last_review_decision()
+        if dec == "approved":
+            print("approved")
+            return 0
+        elif dec == "rejected":
+            print("rejected")
+            return 1
+        else:
+            print("none")
+            return 2
+
+    payload = {
+        "target": "agent",
+        "state": args.state,
+        "message": args.message or f"Agent is {args.state}",
+        "name": args.name,
+        "task": args.task,
+        "progress": args.progress,
+        "changed_files": [f.strip() for f in args.files.split(",")] if args.files else None,
+        "wait": getattr(args, "wait", False),
+        "timeout_sec": getattr(args, "timeout", 300)
+    }
+
+    if payload["wait"]:
+        timeout_sec = payload["timeout_sec"]
+        print(f"[island-cli] Presented review on Dynamic Island. Waiting for human sign-off (timeout: {timeout_sec}s)...")
+        res = send_ipc_wait(payload, timeout=timeout_sec + 5)
+        decision = res.get("decision")
+        if decision == "approved":
+            print("✓ Human-in-the-loop: Changes APPROVED on Dynamic Island.")
+            return 0
+        elif decision == "rejected":
+            print("✗ Human-in-the-loop: Changes DISCARDED / REJECTED on Dynamic Island.")
+            return 1
+        elif decision == "timeout":
+            print(f"✗ Review timed out after {timeout_sec}s.")
+            return 2
+        else:
+            print(f"✗ Error waiting for review: {res.get('error', 'unknown error')}", file=sys.stderr)
+            return 1
+
+    success = send_ipc(payload)
+    if success:
+        print(f"✓ Dynamic Island: Agent updated to [{args.state}] - {payload['message']}")
+    return 0 if success else 1
+
+def cmd_git(args):
+    try:
+        target_dir = getattr(args, "path", None)
+        if not target_dir:
+            is_inside = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], capture_output=True, text=True)
+            if is_inside.returncode == 0 and is_inside.stdout.strip() == "true":
+                target_dir = os.getcwd()
+            else:
+                # Fallback to active editor workspace if available
+                dev_status = get_full_dev_status() or {}
+                editor_info = dev_status.get("editor", {})
+                ws = editor_info.get("workspace_path")
+                if ws and os.path.isdir(ws):
+                    target_dir = ws
+                    editor_name = editor_info.get("editor", "Editor")
+                    print(f"[island-cli] Tracking active {editor_name} workspace: {ws}")
+
+        if not target_dir:
+            print("Not inside a Git repository, and no active editor workspace detected.")
+            return 1
+
+        is_inside = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=target_dir, capture_output=True, text=True)
+        if is_inside.returncode != 0 or is_inside.stdout.strip() != "true":
+            print(f"Directory is not a Git repository: {target_dir}")
+            return 1
+
+        toplevel = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=target_dir, capture_output=True, text=True).stdout.strip()
+        repo_name = os.path.basename(toplevel)
+
+        branch = subprocess.run(["git", "branch", "--show-current"], cwd=target_dir, capture_output=True, text=True).stdout.strip()
+        if not branch:
+            branch = subprocess.run(["git", "symbolic-ref", "--short", "HEAD"], cwd=target_dir, capture_output=True, text=True).stdout.strip() or "HEAD"
+
+        porcelain = [l for l in subprocess.run(["git", "status", "--porcelain"], cwd=target_dir, capture_output=True, text=True).stdout.splitlines() if l.strip()]
+        dirty_count = len(porcelain)
+
+        print(f"Git Repository: {repo_name} ({toplevel})")
+        print(f"Branch:         ⎇ {branch}")
+        print(f"Dirty Files:    {dirty_count}")
+        if dirty_count > 0:
+            for line in porcelain[:6]:
+                print(f"  {line}")
+            if dirty_count > 6:
+                print(f"  ...and {dirty_count - 6} more")
+
+        send_ipc({"target": "git_refresh"})
+        print("✓ Dynamic Island Git HUD refreshed.")
+        return 0
+    except Exception as e:
+        print(f"Error querying Git: {e}", file=sys.stderr)
+        return 1
+
+def cmd_status(args):
+    data = get_full_dev_status()
+    if not data:
+        print("[island-cli] Dynamic Island is not currently active or socket unreachable.")
+        return 1
+
+    print("Dynamic Island Status:")
+    agent = data.get("agent")
+    if agent:
+        state_icon = {
+            "idle": "⚪",
+            "thinking": "🟣",
+            "working": "🟢",
+            "review": "🟡",
+            "error": "🔴",
+        }.get(agent.get("state", "idle"), "⚪")
+        print(f"  Agent:   {state_icon} {agent.get('name', 'AI Agent')} [{agent.get('state', 'idle')}]")
+        if agent.get("message"):
+            print(f"           \"{agent.get('message')}\"")
+        if agent.get("task"):
+            print(f"           Task: {agent.get('task')}")
+
+    build = data.get("build")
+    if build and build.get("state") != "idle":
+        print(f"  Build:   [{build.get('state')}] {build.get('command')}")
+
+    editor = data.get("editor")
+    if editor and editor.get("editor"):
+        loc = f":{editor.get('line')}" if editor.get('line') else ""
+        col = f":{editor.get('column')}" if editor.get('column') else ""
+        print(f"  Editor:  ⚡ {editor.get('editor')} - {editor.get('file_name', '')}{loc}{col}")
+        if editor.get("workspace"):
+            print(f"           Workspace: {editor.get('workspace')}")
+        if editor.get("workspace_path"):
+            print(f"           Path:      {editor.get('workspace_path')}")
+        if editor.get("git_branch"):
+            print(f"           Branch:    ⎇ {editor.get('git_branch')}")
+
+    return 0
+
+def cmd_build(args):
+    if args.run:
+        cmd_str = args.run
+        print(f"[island-cli] Tracking build: '{cmd_str}'...")
+
+        send_ipc({
+            "target": "build",
+            "command": cmd_str,
+            "state": "running"
+        })
+
+        start_time = time.time()
+        res = subprocess.run(cmd_str, shell=True)
+        elapsed_ms = int((time.time() - start_time) * 1000)
+
+        state = "success" if res.returncode == 0 else "failed"
+        send_ipc({
+            "target": "build",
+            "command": cmd_str,
+            "state": state,
+            "duration_ms": elapsed_ms,
+            "exit_code": res.returncode
+        })
+
+        duration_sec = elapsed_ms / 1000.0
+        if res.returncode == 0:
+            print(f"✓ Dynamic Island: Build PASSED ({duration_sec:.2f}s)")
+        else:
+            print(f"✗ Dynamic Island: Build FAILED with exit code {res.returncode} ({duration_sec:.2f}s)")
+        return res.returncode
+
+    payload = {
+        "target": "build",
+        "command": args.command or "build",
+        "state": args.state,
+        "duration_ms": args.duration,
+        "exit_code": args.code
+    }
+    success = send_ipc(payload)
+    if success:
+        print(f"✓ Dynamic Island: Build state updated to [{args.state}]")
+    return 0 if success else 1
+
+def cmd_notify(args):
+    payload = {
+        "target": "notification",
+        "title": args.title,
+        "message": args.message,
+        "app_name": args.app or "Developer CLI",
+        "icon": args.icon or "terminal",
+        "duration_ms": args.duration or 4500
+    }
+    success = send_ipc(payload)
+    if success:
+        print(f"✓ Dynamic Island: Notification sent '{args.title}'")
+    return 0 if success else 1
+
+def cmd_toggle(args):
+    success = send_ipc({"target": "toggle"})
+    if success:
+        print("✓ Dynamic Island: Toggled")
+    return 0 if success else 1
+
+def cmd_screen(args):
+    success = send_ipc({"target": "screen"})
+    if success:
+        print("✓ Dynamic Island: Cycled to next monitor")
+    return 0 if success else 1
+
+def cmd_settings(args):
+    success = send_ipc({"target": "settings"})
+    if success:
+        print("✓ Dynamic Island: Opened Settings panel")
+    return 0 if success else 1
+
+def cmd_hook(args):
+    """
+    Native Antigravity lifecycle hook handler.
+    Called directly by Antigravity via `island-cli hook <event>`.
+    """
+    event = args.event
+    raw_input = ""
+    try:
+        raw_input = sys.stdin.read()
+        data = json.loads(raw_input) if raw_input.strip() else {}
+    except Exception:
+        data = {}
+
+    if event == "pre-invocation":
+        send_ipc({
+            "target": "agent",
+            "name": "Antigravity Agent",
+            "state": "thinking",
+            "message": "Analyzing prompt & planning next steps...",
+        })
+        print(json.dumps({}))
+
+    elif event == "pre-tool":
+        tool_call = data.get("toolCall", {})
+        tool_name = tool_call.get("name", "tool")
+        tool_args = tool_call.get("args", {})
+
+        message = f"Executing {tool_name}"
+        changed_files = None
+        state = "working"
+
+        if tool_name == "ask_question":
+            questions = tool_args.get("questions", [])
+            q_text = questions[0].get("question", "Clarification requested") if questions else "Clarification requested"
+            message = f"Action needed: {q_text[:40]}"
+            state = "review"
+            send_ipc({
+                "target": "notification",
+                "title": "Antigravity Action Needed",
+                "message": q_text[:90],
+                "icon": "message",
+                "duration_ms": 6000
+            })
+        elif tool_name == "run_command":
+            cmd = tool_args.get("CommandLine", "").strip()
+            if "island-cli agent" in cmd or "island-cli hook" in cmd:
+                print(json.dumps({"decision": "allow"}))
+                return 0
+            first_line = cmd.split("\n")[0][:45]
+            if tool_args.get("BypassSandbox"):
+                message = f"Permission required: {first_line[:30]}"
+                state = "review"
+                send_ipc({
+                    "target": "notification",
+                    "title": "Permission Requested",
+                    "message": f"Requires manual approval: {first_line[:60]}",
+                    "icon": "terminal",
+                    "duration_ms": 6000
+                })
+            else:
+                message = f"Shell: {first_line}"
+        elif tool_name in ("edit_file", "write_file"):
+            path = tool_args.get("Path", "")
+            basename = os.path.basename(path) if path else "file"
+            action = "Editing" if tool_name == "edit_file" else "Writing"
+            message = f"{action} {basename}"
+            if basename:
+                changed_files = [basename]
+        elif tool_name == "read_file":
+            path = tool_args.get("Path", "")
+            basename = os.path.basename(path) if path else "file"
+            message = f"Reading {basename}"
+        elif tool_name == "search_web":
+            q = tool_args.get("query", "")[:35]
+            message = f"Web search: {q}"
+
+        payload = {
+            "target": "agent",
+            "name": "Antigravity Agent",
+            "state": state,
+            "message": message,
+        }
+        if changed_files:
+            payload["changed_files"] = changed_files
+
+        send_ipc(payload)
+        print(json.dumps({"decision": "allow"}))
+
+    elif event == "post-tool":
+        print(json.dumps({}))
+
+    elif event == "stop":
+        term_reason = data.get("terminationReason", "NO_TOOL_CALL")
+        if term_reason == "NO_TOOL_CALL":
+            current_state = get_current_agent_state()
+            if current_state != "review":
+                send_ipc({
+                    "target": "agent",
+                    "name": "Antigravity Agent",
+                    "state": "idle",
+                    "message": "Awaiting your reply...",
+                })
+                send_ipc({
+                    "target": "notification",
+                    "title": "Antigravity Agent",
+                    "message": "Response ready - awaiting your input",
+                    "app_name": "Antigravity",
+                    "icon": "terminal",
+                    "duration_ms": 3500
+                })
+        print(json.dumps({"decision": "allow"}))
+
+    else:
+        print(json.dumps({}))
+
+    return 0
+
+def install_antigravity(scope):
+    if scope == "global":
+        target_dir = os.path.expanduser("~/.gemini/config/plugins/dynamic-island")
+        rules_dir = os.path.join(target_dir, "rules")
+        os.makedirs(rules_dir, exist_ok=True)
+
+        with open(os.path.join(target_dir, "plugin.json"), "w") as f:
+            f.write(ANTIGRAVITY_PLUGIN_JSON)
+
+        with open(os.path.join(target_dir, "hooks.json"), "w") as f:
+            f.write(ANTIGRAVITY_HOOKS_JSON)
+
+        with open(os.path.join(rules_dir, "AGENTS.md"), "w") as f:
+            f.write(AGENT_GUIDELINES_MD)
+
+        print(f"✓ Antigravity: Installed globally in {target_dir}")
+        print(f"  • hooks.json configured to use 'island-cli hook'")
+        return True
+    else:
+        target_dir = os.path.abspath(".agents")
+        rules_dir = os.path.join(target_dir, "rules")
+        os.makedirs(rules_dir, exist_ok=True)
+
+        with open(os.path.join(target_dir, "hooks.json"), "w") as f:
+            f.write(ANTIGRAVITY_HOOKS_JSON)
+
+        with open(os.path.join(rules_dir, "dynamic-island.md"), "w") as f:
+            f.write(AGENT_GUIDELINES_MD)
+
+        print(f"✓ Antigravity: Installed locally for workspace in {target_dir}")
+        return True
+
+def install_cursor(scope):
+    mcp_config = {
+        "command": "island-cli",
+        "args": ["mcp"],
+        "type": "stdio"
+    }
+
+    if scope == "global":
+        cursor_dir = os.path.expanduser("~/.cursor")
+        os.makedirs(cursor_dir, exist_ok=True)
+        mcp_path = os.path.join(cursor_dir, "mcp.json")
+        data = {}
+        if os.path.exists(mcp_path):
+            try:
+                with open(mcp_path, "r") as f:
+                    data = json.load(f)
+            except Exception:
+                data = {}
+
+        if "mcpServers" not in data or not isinstance(data["mcpServers"], dict):
+            data["mcpServers"] = {}
+
+        data["mcpServers"]["dynamic-island"] = mcp_config
+
+        with open(mcp_path, "w") as f:
+            json.dump(data, f, indent=2)
+
+        rules_file = os.path.expanduser("~/.cursorrules")
+        with open(rules_file, "w") as f:
+            f.write(AGENT_GUIDELINES_MD)
+
+        print(f"✓ Cursor: Registered MCP server in {mcp_path}")
+        print(f"✓ Cursor: Added rules to {rules_file}")
+        return True
+    else:
+        rules_dir = os.path.abspath(".cursor/rules")
+        os.makedirs(rules_dir, exist_ok=True)
+        rules_file = os.path.join(rules_dir, "dynamic-island.mdc")
+        with open(rules_file, "w") as f:
+            f.write(AGENT_GUIDELINES_MD)
+        print(f"✓ Cursor: Added workspace rules to {rules_file}")
+        return True
+
+def install_claude(scope):
+    if scope == "global":
+        claude_dir = os.path.expanduser("~/.claude")
+        os.makedirs(claude_dir, exist_ok=True)
+
+        claude_json = os.path.expanduser("~/.claude.json")
+        if os.path.exists(claude_json):
+            try:
+                with open(claude_json, "r") as f:
+                    cdata = json.load(f)
+                if "mcpServers" not in cdata or not isinstance(cdata["mcpServers"], dict):
+                    cdata["mcpServers"] = {}
+                cdata["mcpServers"]["dynamic-island"] = {
+                    "command": "island-cli",
+                    "args": ["mcp"]
+                }
+                with open(claude_json, "w") as f:
+                    json.dump(cdata, f, indent=2)
+                print(f"✓ Claude Code: Registered MCP server in {claude_json}")
+            except Exception as e:
+                print(f"  Note: Could not update ~/.claude.json: {e}")
+
+        rules_file = os.path.join(claude_dir, "CLAUDE.md")
+        with open(rules_file, "w") as f:
+            f.write(AGENT_GUIDELINES_MD)
+        print(f"✓ Claude Code: Added global guidelines to {rules_file}")
+        return True
+    else:
+        rules_file = os.path.abspath("CLAUDE.md")
+        with open(rules_file, "w") as f:
+            f.write(AGENT_GUIDELINES_MD)
+        print(f"✓ Claude Code: Added project guidelines to {rules_file}")
+        return True
+
+def install_windsurf(scope):
+    if scope == "global":
+        windsurf_dir = os.path.expanduser("~/.codeium/windsurf")
+        os.makedirs(windsurf_dir, exist_ok=True)
+        mcp_path = os.path.join(windsurf_dir, "mcp_config.json")
+
+        data = {}
+        if os.path.exists(mcp_path):
+            try:
+                with open(mcp_path, "r") as f:
+                    data = json.load(f)
+            except Exception:
+                data = {}
+
+        if "mcpServers" not in data or not isinstance(data["mcpServers"], dict):
+            data["mcpServers"] = {}
+
+        data["mcpServers"]["dynamic-island"] = {
+            "command": "island-cli",
+            "args": ["mcp"]
+        }
+
+        with open(mcp_path, "w") as f:
+            json.dump(data, f, indent=2)
+
+        memories_dir = os.path.join(windsurf_dir, "memories")
+        os.makedirs(memories_dir, exist_ok=True)
+        rules_file = os.path.join(memories_dir, "global_rules.md")
+        with open(rules_file, "w") as f:
+            f.write(AGENT_GUIDELINES_MD)
+
+        print(f"✓ Windsurf: Configured MCP in {mcp_path}")
+        print(f"✓ Windsurf: Added global memory rules in {rules_file}")
+        return True
+    else:
+        rules_file = os.path.abspath(".windsurfrules")
+        with open(rules_file, "w") as f:
+            f.write(AGENT_GUIDELINES_MD)
+        print(f"✓ Windsurf: Added workspace rules to {rules_file}")
+        return True
+
+def install_opencode(scope):
+    rules_file = os.path.expanduser("~/.config/opencode/rules.md") if scope == "global" else os.path.abspath("OPENCODE.md")
+    os.makedirs(os.path.dirname(rules_file), exist_ok=True)
+    with open(rules_file, "w") as f:
+        f.write(AGENT_GUIDELINES_MD)
+    print(f"✓ OpenCode: Added instructions to {rules_file}")
+    return True
+
+def cmd_install(args):
+    target = (args.target or "antigravity").lower()
+    scope = (args.scope or ("local" if getattr(args, "local", False) else "global")).lower()
+
+    if target in ("antigravity", "gemini"):
+        install_antigravity(scope)
+    elif target == "cursor":
+        install_cursor(scope)
+    elif target in ("claude", "claudecode"):
+        install_claude(scope)
+    elif target in ("windsurf", "codeium"):
+        install_windsurf(scope)
+    elif target in ("opencode", "openhands", "aider"):
+        install_opencode(scope)
+    elif target in ("all", "*"):
+        print(f"Installing Dynamic Island integrations across all supported agents ({scope}):\n")
+        install_antigravity(scope)
+        install_cursor(scope)
+        install_claude(scope)
+        install_windsurf(scope)
+        install_opencode(scope)
+        print("\nAll AI coding agents configured! They will now automatically stream status to your Dynamic Island.")
+    else:
+        print(f"[island-cli] Unknown target: '{target}'. Available: antigravity, cursor, claude, windsurf, opencode, all", file=sys.stderr)
+        return 1
+
+    return 0
+
+def cmd_uninstall(args):
+    target = (args.target or "antigravity").lower()
+    scope = (args.scope or ("local" if getattr(args, "local", False) else "global")).lower()
+
+    if target in ("antigravity", "gemini"):
+        if scope == "global":
+            p = os.path.expanduser("~/.gemini/config/plugins/dynamic-island")
+            if os.path.exists(p):
+                shutil.rmtree(p)
+                print(f"✓ Removed {p}")
+        else:
+            p = os.path.abspath(".agents")
+            if os.path.exists(p):
+                shutil.rmtree(p)
+                print(f"✓ Removed {p}")
+    elif target == "cursor":
+        mcp_path = os.path.expanduser("~/.cursor/mcp.json")
+        if os.path.exists(mcp_path):
+            try:
+                with open(mcp_path, "r") as f:
+                    d = json.load(f)
+                d.get("mcpServers", {}).pop("dynamic-island", None)
+                with open(mcp_path, "w") as f:
+                    json.dump(d, f, indent=2)
+                print(f"✓ Removed dynamic-island from {mcp_path}")
+            except Exception:
+                pass
+    elif target in ("claude", "claudecode"):
+        claude_json = os.path.expanduser("~/.claude.json")
+        if os.path.exists(claude_json):
+            try:
+                with open(claude_json, "r") as f:
+                    d = json.load(f)
+                d.get("mcpServers", {}).pop("dynamic-island", None)
+                with open(claude_json, "w") as f:
+                    json.dump(d, f, indent=2)
+                print(f"✓ Removed dynamic-island from {claude_json}")
+            except Exception:
+                pass
+    elif target in ("windsurf", "codeium"):
+        p = os.path.expanduser("~/.codeium/windsurf/mcp_config.json")
+        if os.path.exists(p):
+            try:
+                with open(p, "r") as f:
+                    d = json.load(f)
+                d.get("mcpServers", {}).pop("dynamic-island", None)
+                with open(p, "w") as f:
+                    json.dump(d, f, indent=2)
+                print(f"✓ Removed dynamic-island from {p}")
+            except Exception:
+                pass
+    elif target in ("all", "*"):
+        args.target = "antigravity"
+        cmd_uninstall(args)
+        args.target = "cursor"
+        cmd_uninstall(args)
+        args.target = "claude"
+        cmd_uninstall(args)
+        args.target = "windsurf"
+        cmd_uninstall(args)
+    return 0
+
+def run_mcp_server():
+    """
+    Standard Model Context Protocol (MCP) stdio server.
+    Allows Cursor, Claude Code, Windsurf, OpenCode, and Cline to interact with the Dynamic Island natively.
+    """
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            break
+        try:
+            req = json.loads(line)
+        except Exception:
+            continue
+
+        req_id = req.get("id")
+        method = req.get("method")
+        params = req.get("params", {})
+
+        if method == "initialize":
+            resp = {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {
+                        "tools": {}
+                    },
+                    "serverInfo": {
+                        "name": "dynamic-island-mcp",
+                        "version": "0.1.0"
+                    }
+                }
+            }
+            sys.stdout.write(json.dumps(resp) + "\n")
+            sys.stdout.flush()
+
+        elif method == "notifications/initialized":
+            pass
+
+        elif method == "tools/list":
+            resp = {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "tools": [
+                        {
+                            "name": "island_update_status",
+                            "description": "Update the AI Agent status pill & panel on the Linux Dynamic Island (thinking, working, review, idle)",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "state": {
+                                        "type": "string",
+                                        "enum": ["idle", "thinking", "working", "review", "error"],
+                                        "description": "Agent state"
+                                    },
+                                    "message": {
+                                        "type": "string",
+                                        "description": "Status description displayed on the island"
+                                    },
+                                    "name": {
+                                        "type": "string",
+                                        "description": "Name of the AI assistant (e.g. Cursor, Claude, Windsurf)"
+                                    },
+                                    "task": {
+                                        "type": "string",
+                                        "description": "Active task or goal title"
+                                    },
+                                    "progress": {
+                                        "type": "integer",
+                                        "description": "Progress percentage (0-100)"
+                                    },
+                                    "changed_files": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "List of filenames currently modified"
+                                    }
+                                },
+                                "required": ["state", "message"]
+                            }
+                        },
+                        {
+                            "name": "island_prompt_user",
+                            "description": "Notify Dynamic Island when asking the user a question, awaiting clarification, or requesting permission",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "question": {"type": "string", "description": "The question or action needed from the user"},
+                                    "options": {"type": "array", "items": {"type": "string"}, "description": "Selectable choices if applicable"}
+                                },
+                                "required": ["question"]
+                            }
+                        },
+                        {
+                            "name": "island_request_review",
+                            "description": "Present an interactive desktop human-in-the-loop review modal with 'Approve & Apply' and 'Discard' buttons on the Dynamic Island",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "message": {
+                                        "type": "string",
+                                        "description": "Review summary message"
+                                    },
+                                    "changed_files": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "Files to present as changed chips for approval"
+                                    }
+                                },
+                                "required": ["message"]
+                            }
+                        },
+                        {
+                            "name": "island_notify",
+                            "description": "Display a floating alert notification banner on the Linux Dynamic Island",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "title": {"type": "string", "description": "Notification title"},
+                                    "message": {"type": "string", "description": "Notification message body"},
+                                    "icon": {"type": "string", "enum": ["terminal", "message", "system"], "description": "Icon type"}
+                                },
+                                "required": ["title", "message"]
+                            }
+                        }
+                    ]
+                }
+            }
+            sys.stdout.write(json.dumps(resp) + "\n")
+            sys.stdout.flush()
+
+        elif method == "tools/call":
+            tool_name = params.get("name")
+            arguments = params.get("arguments", {})
+
+            if tool_name == "island_update_status":
+                send_ipc({
+                    "target": "agent",
+                    "state": arguments.get("state", "working"),
+                    "message": arguments.get("message", "Working..."),
+                    "name": arguments.get("name", "AI Assistant"),
+                    "task": arguments.get("task"),
+                    "progress": arguments.get("progress"),
+                    "changed_files": arguments.get("changed_files")
+                })
+                text = f"Dynamic Island updated to [{arguments.get('state')}]"
+            elif tool_name == "island_prompt_user":
+                question = arguments.get("question", "Action required")
+                send_ipc({
+                    "target": "agent",
+                    "state": "review",
+                    "message": f"Action: {question[:45]}",
+                })
+                send_ipc({
+                    "target": "notification",
+                    "title": "Action Required",
+                    "message": question[:100],
+                    "icon": "message",
+                    "duration_ms": 6000
+                })
+                text = "Dynamic Island prompt displayed to user"
+            elif tool_name == "island_request_review":
+                message = arguments.get("message", "Review requested")
+                changed_files = arguments.get("changed_files")
+                wait = arguments.get("wait", True)
+
+                if wait:
+                    res = send_ipc_wait({
+                        "target": "agent",
+                        "state": "review",
+                        "message": message,
+                        "changed_files": changed_files,
+                        "wait": True,
+                        "timeout_sec": 300
+                    }, timeout=305)
+                    decision = res.get("decision")
+                    if decision == "approved":
+                        text = "Decision: APPROVED by user on Dynamic Island. Proceed to apply/commit changes."
+                    elif decision == "rejected":
+                        text = "Decision: DISCARDED by user on Dynamic Island. Do not apply changes; ask user how to proceed."
+                    elif decision == "timeout":
+                        text = "Decision: TIMED OUT. User did not respond in 5 minutes."
+                    else:
+                        text = f"Decision: Error ({res.get('error', 'unknown')})"
+                else:
+                    send_ipc({
+                        "target": "agent",
+                        "state": "review",
+                        "message": message,
+                        "changed_files": changed_files
+                    })
+                    text = "Dynamic Island review card presented for human approval"
+            elif tool_name == "island_notify":
+                send_ipc({
+                    "target": "notification",
+                    "title": arguments.get("title", "Notice"),
+                    "message": arguments.get("message", ""),
+                    "icon": arguments.get("icon", "terminal")
+                })
+                text = "Dynamic Island notification displayed"
+            else:
+                text = f"Unknown tool: {tool_name}"
+
+            resp = {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [{"type": "text", "text": text}]
+                }
+            }
+            sys.stdout.write(json.dumps(resp) + "\n")
+            sys.stdout.flush()
+
+def main():
+    parser = argparse.ArgumentParser(description="Dynamic Island Developer CLI & Multi-Agent MCP Integration")
+    subparsers = parser.add_subparsers(dest="subcommand", required=True)
+
+    # Toggle sub-command
+    subparsers.add_parser("toggle", help="Toggle Dynamic Island expanded/collapsed")
+
+    # Screen sub-command
+    subparsers.add_parser("screen", help="Cycle Dynamic Island to next monitor")
+
+    # Settings sub-command
+    subparsers.add_parser("settings", help="Open Settings & Preferences panel")
+
+    # Hook sub-command (used internally by Antigravity lifecycle hooks)
+    hook_parser = subparsers.add_parser("hook", help="Antigravity lifecycle hook handler")
+    hook_parser.add_argument("event", choices=["pre-invocation", "pre-tool", "post-tool", "stop"], help="Hook event type")
+
+    # MCP server sub-command
+    subparsers.add_parser("mcp", help="Run Model Context Protocol (MCP) stdio server for AI agents")
+
+    # Install sub-command
+    install_parser = subparsers.add_parser("install", help="Install integrations (Antigravity, Cursor, Claude, Windsurf, OpenCode)")
+    install_parser.add_argument("target", choices=["antigravity", "cursor", "claude", "windsurf", "opencode", "all"], help="Integration target to install")
+    install_parser.add_argument("scope", nargs="?", default="global", choices=["global", "local", "workspace"], help="Install scope (default: global)")
+    install_parser.add_argument("--global", "-g", dest="scope_global", action="store_true", help="Install globally")
+    install_parser.add_argument("--local", "-l", dest="local", action="store_true", help="Install locally in current workspace")
+
+    # Uninstall sub-command
+    uninstall_parser = subparsers.add_parser("uninstall", help="Uninstall integrations")
+    uninstall_parser.add_argument("target", choices=["antigravity", "cursor", "claude", "windsurf", "opencode", "all"], help="Integration target to uninstall")
+    uninstall_parser.add_argument("scope", nargs="?", default="global", choices=["global", "local", "workspace"], help="Uninstall scope (default: global)")
+
+    # Agent sub-command
+    agent_parser = subparsers.add_parser("agent", help="Update AI Agent status")
+    agent_parser.add_argument("--state", choices=["idle", "thinking", "working", "review", "error"], default="working")
+    agent_parser.add_argument("--message", "-m", help="Status description")
+    agent_parser.add_argument("--name", default="AI Assistant", help="Agent name")
+    agent_parser.add_argument("--task", "-t", help="Active task title")
+    agent_parser.add_argument("--progress", "-p", type=int, help="Progress percent (0-100)")
+    agent_parser.add_argument("--files", "-f", help="Comma-separated modified files")
+    agent_parser.add_argument("--wait", "-w", action="store_true", help="Block until human approves or discards on Dynamic Island")
+    agent_parser.add_argument("--timeout", type=int, default=300, help="Timeout in seconds when waiting for approval (default: 300)")
+    agent_parser.add_argument("--decision", action="store_true", help="Print latest review decision (approved/rejected/none)")
+    agent_parser.add_argument("--approve", action="store_true", help="Approve active review")
+    agent_parser.add_argument("--reject", action="store_true", help="Reject/discard active review")
+
+    # Build sub-command
+    build_parser = subparsers.add_parser("build", help="Update or track build status")
+    build_parser.add_argument("--run", "-r", help="Run command, monitor its duration and exit code")
+    build_parser.add_argument("--state", choices=["idle", "running", "success", "failed"], default="running")
+    build_parser.add_argument("--command", "-c", help="Command description")
+    build_parser.add_argument("--duration", "-d", type=int, help="Duration in milliseconds")
+    build_parser.add_argument("--code", type=int, help="Exit code")
+
+    # Git sub-command
+    git_parser = subparsers.add_parser("git", help="Query or refresh Git repository status HUD")
+    git_parser.add_argument("path", nargs="?", default=None, help="Optional git repository directory")
+
+    # Status sub-command
+    subparsers.add_parser("status", help="Show current AI agent, build, editor, and git status")
+
+    # Notify sub-command
+    notify_parser = subparsers.add_parser("notify", help="Send alert notification")
+    notify_parser.add_argument("title", help="Notification title")
+    notify_parser.add_argument("message", help="Notification message")
+    notify_parser.add_argument("--app", default="CLI", help="Origin app name")
+    notify_parser.add_argument("--icon", choices=["message", "terminal", "system"], default="terminal")
+    notify_parser.add_argument("--duration", type=int, default=4500, help="Display duration in ms")
+
+    args = parser.parse_args()
+
+    if args.subcommand == "toggle":
+        sys.exit(cmd_toggle(args))
+    elif args.subcommand == "screen":
+        sys.exit(cmd_screen(args))
+    elif args.subcommand == "settings":
+        sys.exit(cmd_settings(args))
+    elif args.subcommand == "hook":
+        sys.exit(cmd_hook(args))
+    elif args.subcommand == "mcp":
+        run_mcp_server()
+    elif args.subcommand == "install":
+        sys.exit(cmd_install(args))
+    elif args.subcommand == "uninstall":
+        sys.exit(cmd_uninstall(args))
+    elif args.subcommand == "agent":
+        sys.exit(cmd_agent(args))
+    elif args.subcommand == "git":
+        sys.exit(cmd_git(args))
+    elif args.subcommand == "status":
+        sys.exit(cmd_status(args))
+    elif args.subcommand == "build":
+        sys.exit(cmd_build(args))
+    elif args.subcommand == "notify":
+        sys.exit(cmd_notify(args))
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,62 @@
+{
+  "name": "dynamic-island-presence",
+  "displayName": "Linux Dynamic Island Presence",
+  "description": "Rich Presence & status bridge for Linux Dynamic Island",
+  "version": "0.1.0",
+  "publisher": "dynamic-island",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "dynamicIsland.toggle",
+        "title": "Dynamic Island: Toggle Island",
+        "category": "Dynamic Island"
+      },
+      {
+        "command": "dynamicIsland.reconnect",
+        "title": "Dynamic Island: Reconnect Socket",
+        "category": "Dynamic Island"
+      }
+    ],
+    "configuration": {
+      "title": "Dynamic Island Presence",
+      "properties": {
+        "dynamicIsland.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable streaming editor presence to Linux Dynamic Island."
+        },
+        "dynamicIsland.showLineNumber": {
+          "type": "boolean",
+          "default": true,
+          "description": "Broadcast active line & column number."
+        },
+        "dynamicIsland.showWorkspace": {
+          "type": "boolean",
+          "default": true,
+          "description": "Broadcast workspace / folder name."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,0 +1,148 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.4;
+  font-weight: 400;
+  color-scheme: dark;
+  color: #f3f4f6;
+
+  /* Dark Theme (Default - OLED Black) */
+  --island-bg: #000000;
+  --island-surface: #111113;
+  --island-surface-hover: #1c1c1f;
+  --island-border: rgba(255, 255, 255, 0.14);
+  --island-border-hover: rgba(255, 255, 255, 0.32);
+  --island-text-primary: #f9fafb;
+  --island-text-secondary: #9ca3af;
+  --island-text-muted: #6b7280;
+  --island-accent: #3b82f6;
+  --island-green: #10b981;
+  --island-amber: #f59e0b;
+  --island-red: #ef4444;
+  --island-card-bg: rgba(255, 255, 255, 0.05);
+  --island-card-border: rgba(255, 255, 255, 0.08);
+  --island-card-hover: rgba(255, 255, 255, 0.09);
+  --island-glow: none;
+  --island-shadow: 0 8px 32px rgba(0, 0, 0, 0.75);
+}
+
+/* Light Theme (Frosted Acrylic) */
+:root[data-theme='light'],
+[data-theme='light'] {
+  color-scheme: light;
+  color: #0f172a;
+  --island-bg: #f8fafc;
+  --island-surface: #ffffff;
+  --island-surface-hover: #f1f5f9;
+  --island-border: rgba(15, 23, 42, 0.16);
+  --island-border-hover: rgba(15, 23, 42, 0.35);
+  --island-text-primary: #0f172a;
+  --island-text-secondary: #475569;
+  --island-text-muted: #64748b;
+  --island-accent: #2563eb;
+  --island-green: #059669;
+  --island-amber: #d97706;
+  --island-red: #dc2626;
+  --island-card-bg: rgba(15, 23, 42, 0.04);
+  --island-card-border: rgba(15, 23, 42, 0.09);
+  --island-card-hover: rgba(15, 23, 42, 0.08);
+  --island-glow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  --island-shadow: 0 12px 36px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Neon Theme (Cyberpunk Synthwave) */
+:root[data-theme='neon'],
+[data-theme='neon'] {
+  color-scheme: dark;
+  color: #e0f2fe;
+  --island-bg: #070913;
+  --island-surface: #0c0e1e;
+  --island-surface-hover: #14172e;
+  --island-border: #00f0ff;
+  --island-border-hover: #ff007f;
+  --island-text-primary: #ffffff;
+  --island-text-secondary: #7dd3fc;
+  --island-text-muted: #38bdf8;
+  --island-accent: #00f0ff;
+  --island-green: #00ffaa;
+  --island-amber: #ffb703;
+  --island-red: #ff0055;
+  --island-card-bg: rgba(0, 240, 255, 0.05);
+  --island-card-border: rgba(0, 240, 255, 0.24);
+  --island-card-hover: rgba(255, 0, 127, 0.18);
+  --island-glow: 0 0 16px rgba(0, 240, 255, 0.45);
+  --island-shadow: 0 0 24px rgba(0, 240, 255, 0.35), 0 8px 32px rgba(0, 0, 0, 0.85);
+}
+
+/* Anime Theme (Sakura Pastel Kawaii) */
+:root[data-theme='anime'],
+[data-theme='anime'] {
+  color-scheme: dark;
+  color: #fff0f5;
+  --island-bg: #1f142b;
+  --island-surface: #2b1c3b;
+  --island-surface-hover: #37244c;
+  --island-border: #ff77a8;
+  --island-border-hover: #c084fc;
+  --island-text-primary: #fff0f5;
+  --island-text-secondary: #f9a8d4;
+  --island-text-muted: #d8b4fe;
+  --island-accent: #ff65a3;
+  --island-green: #4ade80;
+  --island-amber: #fcd34d;
+  --island-red: #fb7185;
+  --island-card-bg: rgba(255, 119, 168, 0.08);
+  --island-card-border: rgba(255, 119, 168, 0.24);
+  --island-card-hover: rgba(192, 132, 252, 0.18);
+  --island-glow: 0 0 18px rgba(255, 101, 163, 0.42);
+  --island-shadow: 0 0 24px rgba(255, 101, 163, 0.3), 0 8px 32px rgba(24, 10, 36, 0.85);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent !important;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  background: transparent !important;
+  box-sizing: border-box;
+}
+
+button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Accessible focus ring */
+*:focus-visible {
+  outline: 2px solid var(--island-accent);
+  outline-offset: 2px;
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
