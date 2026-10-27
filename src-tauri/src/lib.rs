@@ -23,8 +23,8 @@ pub struct AppState {
     pub dev_manager: Arc<dev_ipc::DevManager>,
     pub clipboard_manager: Arc<clipboard::ClipboardManager>,
     pub shelf_manager: Arc<drop_shelf::ShelfManager>,
-    pub last_programmatic_pos: Mutex<Option<(i32, i32)>>,
-    pub pending_user_pos: Mutex<Option<(f64, f64, std::time::Instant)>>,
+    pub last_programmatic_pos: Mutex<Option<(i32, i32, std::time::Instant)>>,
+    pub pending_user_pos: Mutex<Option<(f64, f64, Option<String>, std::time::Instant)>>,
     pub is_user_dragging: AtomicBool,
 }
 
@@ -76,14 +76,63 @@ fn resolve_monitor(
     resolve_monitor_from_window(available, current, primary, target_name)
 }
 
-fn resolve_monitor_for_win(
+fn find_monitor_from_coords(
+    available: &[tauri::Monitor],
+    current: Option<tauri::Monitor>,
+    primary: Option<tauri::Monitor>,
+    pos: &tauri::PhysicalPosition<i32>,
+    win_w: u32,
+) -> Option<tauri::Monitor> {
+    let center_x = pos.x + (win_w as i32) / 2;
+    let center_y = pos.y + 20;
+
+    // 1. Point containment (center_x, center_y) inside monitor bounding box
+    for m in available {
+        let m_pos = m.position();
+        let m_size = m.size();
+        if center_x >= m_pos.x
+            && center_x < m_pos.x + m_size.width as i32
+            && center_y >= m_pos.y
+            && center_y < m_pos.y + m_size.height as i32
+        {
+            return Some(m.clone());
+        }
+    }
+
+    // 2. Horizontal containment (center_x inside monitor X bounds)
+    for m in available {
+        let m_pos = m.position();
+        let m_size = m.size();
+        if center_x >= m_pos.x && center_x < m_pos.x + m_size.width as i32 {
+            return Some(m.clone());
+        }
+    }
+
+    current
+        .or(primary)
+        .or_else(|| available.first().cloned())
+}
+
+fn find_monitor_for_win(
     window: &tauri::Window,
-    target_name: Option<&str>,
+    pos: &tauri::PhysicalPosition<i32>,
+    win_w: u32,
 ) -> Option<tauri::Monitor> {
     let available = window.available_monitors().ok().unwrap_or_default();
     let current = window.current_monitor().ok().flatten();
     let primary = window.primary_monitor().ok().flatten();
-    resolve_monitor_from_window(available, current, primary, target_name)
+    find_monitor_from_coords(&available, current, primary, pos, win_w)
+}
+
+fn find_monitor_for_webview(
+    window: &WebviewWindow,
+    pos: &tauri::PhysicalPosition<i32>,
+    win_w: u32,
+) -> Option<tauri::Monitor> {
+    let available = window.available_monitors().ok().unwrap_or_default();
+    let current = window.current_monitor().ok().flatten();
+    let primary = window.primary_monitor().ok().flatten();
+    find_monitor_from_coords(&available, current, primary, pos, win_w)
 }
 
 pub fn compute_target_coordinates(
@@ -109,10 +158,9 @@ pub fn compute_target_coordinates(
             }
         }
         "custom" => {
-            let center_phys = x_offset_phys;
+            let center_phys = x_offset_phys.clamp(30, (monitor_size.width as i32 - 30).max(30));
             let half_w = (target_physical_width / 2) as i32;
-            let max_x = (monitor_size.width.saturating_sub(target_physical_width)) as i32;
-            (center_phys - half_w).clamp(0, max_x.max(0))
+            center_phys - half_w
         }
         _ => {
             // "center" default
@@ -126,7 +174,8 @@ pub fn compute_target_coordinates(
     };
 
     let effective_top_margin = if settings.horizontal_position.eq_ignore_ascii_case("custom") {
-        settings.top_margin
+        let max_top = (monitor_size.height as f64 / scale_factor - 40.0).max(0.0);
+        settings.top_margin.clamp(0.0, max_top)
     } else if top_margin_override >= 0.0 {
         top_margin_override
     } else {
@@ -150,6 +199,34 @@ fn resize_and_center_island(
     height: f64,
     top_margin: f64,
 ) -> Result<(), String> {
+    // 1. If user is actively dragging the window with mouse right now, don't move it
+    let is_actively_dragging = state.is_user_dragging.load(Ordering::SeqCst) || {
+        let lock = state.pending_user_pos.lock().unwrap();
+        if let Some((_, _, _, inst)) = *lock {
+            inst.elapsed() < std::time::Duration::from_millis(150)
+        } else {
+            false
+        }
+    };
+    if is_actively_dragging {
+        return Ok(());
+    }
+
+    // 2. If there is any pending user manual position from dragging that just settled, commit it now
+    let pending = state.pending_user_pos.lock().unwrap().take();
+    if let Some((center_rel, y_rel, mon_name, _)) = pending {
+        state.is_user_dragging.store(false, Ordering::SeqCst);
+        if let Some(name) = mon_name {
+            *state.current_monitor_name.lock().unwrap() = Some(name);
+        }
+        let mut s = settings::load_settings_from_disk();
+        s.horizontal_position = "custom".to_string();
+        s.x_offset = center_rel;
+        s.top_margin = y_rel;
+        let _ = settings::save_settings_to_disk(&s);
+        let _ = window.emit("settings-updated", &s);
+    }
+
     let saved_name = state.current_monitor_name.lock().unwrap().clone();
     let monitor = resolve_monitor(&window, saved_name.as_deref())
         .ok_or_else(|| "No monitor detected".to_string())?;
@@ -159,20 +236,9 @@ fn resize_and_center_island(
     let target_physical_width = (FIXED_WINDOW_WIDTH * scale_factor).round() as u32;
     let target_physical_height = (FIXED_WINDOW_HEIGHT * scale_factor).round() as u32;
 
-    // If there is any pending user manual position from dragging, commit it now
-    let pending = state.pending_user_pos.lock().unwrap().take();
-    if let Some((center_rel, y_rel, _)) = pending {
-        let mut s = settings::load_settings_from_disk();
-        s.horizontal_position = "custom".to_string();
-        s.x_offset = center_rel;
-        s.top_margin = y_rel;
-        let _ = settings::save_settings_to_disk(&s);
-        let _ = window.emit("settings-updated", &s);
-    }
-
     let (target_x, target_y) = compute_target_coordinates(&monitor, target_physical_width, top_margin);
 
-    *state.last_programmatic_pos.lock().unwrap() = Some((target_x, target_y));
+    *state.last_programmatic_pos.lock().unwrap() = Some((target_x, target_y, std::time::Instant::now()));
 
     // Ensure the native window has the fixed size and stable position
     if let Ok(cur_size) = window.inner_size() {
@@ -346,12 +412,15 @@ fn save_custom_window_position(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     state.is_user_dragging.store(false, Ordering::SeqCst);
-    let saved_name = state.current_monitor_name.lock().unwrap().clone();
-    if let Some(monitor) = resolve_monitor(&window, saved_name.as_deref()) {
-        if let Ok(pos) = window.outer_position() {
+    if let Ok(pos) = window.outer_position() {
+        let win_w = window.inner_size().map(|s| s.width).unwrap_or(800);
+        if let Some(monitor) = find_monitor_for_webview(&window, &pos, win_w) {
+            let mon_name = monitor.name().cloned();
+            if let Some(ref name) = mon_name {
+                *state.current_monitor_name.lock().unwrap() = Some(name.clone());
+            }
             let scale_factor = monitor.scale_factor();
             let monitor_pos = monitor.position();
-            let win_w = window.inner_size().map(|s| s.width).unwrap_or(0);
             let center_phys = (pos.x - monitor_pos.x) + (win_w as i32) / 2;
             let center_rel = center_phys as f64 / scale_factor;
             let y_rel = ((pos.y - monitor_pos.y) as f64 / scale_factor).max(0.0);
@@ -361,7 +430,8 @@ fn save_custom_window_position(
             settings.x_offset = center_rel;
             settings.top_margin = y_rel;
             settings::save_settings_to_disk(&settings)?;
-            *state.last_programmatic_pos.lock().unwrap() = Some((pos.x, pos.y));
+            *state.last_programmatic_pos.lock().unwrap() = Some((pos.x, pos.y, std::time::Instant::now()));
+            state.pending_user_pos.lock().unwrap().take();
             let _ = window.emit("settings-updated", &settings);
         }
     }
@@ -840,23 +910,40 @@ pub fn run() {
             match event {
                 tauri::WindowEvent::Moved(pos) => {
                     if let Some(state) = window.try_state::<AppState>() {
-                        if state.is_user_dragging.load(Ordering::SeqCst) {
-                            let saved_name = state.current_monitor_name.lock().unwrap().clone();
-                            let current_mon = window.current_monitor().ok().flatten();
-                            let target_mon = current_mon.or_else(|| resolve_monitor_for_win(window, saved_name.as_deref()));
+                        let is_prog = {
+                            let mut prog = state.last_programmatic_pos.lock().unwrap();
+                            if let Some((px, py, inst)) = *prog {
+                                if (pos.x - px).abs() <= 2 && (pos.y - py).abs() <= 2 {
+                                    if inst.elapsed() >= std::time::Duration::from_millis(100) {
+                                        *prog = None;
+                                    }
+                                    true
+                                } else if inst.elapsed() < std::time::Duration::from_millis(300) {
+                                    true
+                                } else {
+                                    *prog = None;
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+                        };
 
-                            if let Some(monitor) = target_mon {
-                                if let Some(name) = monitor.name() {
+                        if !is_prog {
+                            let win_w = window.inner_size().map(|s| s.width).unwrap_or(800);
+                            if let Some(monitor) = find_monitor_for_win(window, &pos, win_w) {
+                                let mon_name = monitor.name().cloned();
+                                if let Some(ref name) = mon_name {
                                     *state.current_monitor_name.lock().unwrap() = Some(name.clone());
                                 }
                                 let scale_factor = monitor.scale_factor();
                                 let monitor_pos = monitor.position();
-                                let win_w = window.inner_size().map(|s| s.width).unwrap_or(0);
                                 let center_phys = (pos.x - monitor_pos.x) + (win_w as i32) / 2;
                                 let center_rel = center_phys as f64 / scale_factor;
                                 let y_rel = ((pos.y - monitor_pos.y) as f64 / scale_factor).max(0.0);
 
-                                *state.pending_user_pos.lock().unwrap() = Some((center_rel, y_rel, std::time::Instant::now()));
+                                *state.pending_user_pos.lock().unwrap() =
+                                    Some((center_rel, y_rel, mon_name, std::time::Instant::now()));
                             }
                         }
                     }
@@ -866,7 +953,10 @@ pub fn run() {
                         if let Some(state) = window.try_state::<AppState>() {
                             state.is_user_dragging.store(false, Ordering::SeqCst);
                             let pending = state.pending_user_pos.lock().unwrap().take();
-                            if let Some((center_rel, y_rel, _)) = pending {
+                            if let Some((center_rel, y_rel, mon_name, _)) = pending {
+                                if let Some(name) = mon_name {
+                                    *state.current_monitor_name.lock().unwrap() = Some(name);
+                                }
                                 let mut settings = settings::load_settings_from_disk();
                                 settings.horizontal_position = "custom".to_string();
                                 settings.x_offset = center_rel;
@@ -910,6 +1000,40 @@ pub fn run() {
                 let _ = resize_and_center_island(window, state, 340.0, 52.0, init_settings.top_margin);
             }
 
+            // Background worker: Fast debounce commit for manual window dragging (Alt+drag or native drag)
+            let drag_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+
+                    if let Some(state) = drag_handle.try_state::<AppState>() {
+                        let should_commit = {
+                            let lock = state.pending_user_pos.lock().unwrap();
+                            if let Some((_, _, _, inst)) = *lock {
+                                inst.elapsed() >= std::time::Duration::from_millis(150)
+                            } else {
+                                false
+                            }
+                        };
+
+                        if should_commit {
+                            state.is_user_dragging.store(false, Ordering::SeqCst);
+                            if let Some((x_rel, y_rel, mon_name, _)) = state.pending_user_pos.lock().unwrap().take() {
+                                if let Some(name) = mon_name {
+                                    *state.current_monitor_name.lock().unwrap() = Some(name);
+                                }
+                                let mut s = settings::load_settings_from_disk();
+                                s.horizontal_position = "custom".to_string();
+                                s.x_offset = x_rel;
+                                s.top_margin = y_rel;
+                                let _ = settings::save_settings_to_disk(&s);
+                                let _ = drag_handle.emit("settings-updated", &s);
+                            }
+                        }
+                    }
+                }
+            });
+
             // Background worker: PipeWire / PulseAudio Real-Time Equalizer Spectrum Monitor
             audio_monitor::start_audio_monitor(app.handle().clone(), Arc::new(AtomicBool::new(true)));
 
@@ -921,28 +1045,6 @@ pub fn run() {
 
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(800));
-
-                    // 0. Commit user manual drag position if settled
-                    if let Some(state) = handle.try_state::<AppState>() {
-                        let should_commit = {
-                            let lock = state.pending_user_pos.lock().unwrap();
-                            if let Some((_, _, inst)) = *lock {
-                                inst.elapsed() >= std::time::Duration::from_millis(200)
-                            } else {
-                                false
-                            }
-                        };
-                        if should_commit {
-                            if let Some((x_rel, y_rel, _)) = state.pending_user_pos.lock().unwrap().take() {
-                                let mut s = settings::load_settings_from_disk();
-                                s.horizontal_position = "custom".to_string();
-                                s.x_offset = x_rel;
-                                s.top_margin = y_rel;
-                                let _ = settings::save_settings_to_disk(&s);
-                                let _ = handle.emit("settings-updated", &s);
-                            }
-                        }
-                    }
 
                     // 1. MPRIS check (every 800ms)
                     let current = media::get_active_player_metadata();

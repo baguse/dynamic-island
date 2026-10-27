@@ -159,7 +159,10 @@
   function handleSurfaceClick(e: MouseEvent) {
     if (e.altKey || e.shiftKey || justFinishedDrag || isDraggingWindow) {
       justFinishedDrag = false;
-      isDraggingWindow = false;
+      if (isDraggingWindow) {
+        isDraggingWindow = false;
+        islandState.saveCustomPosition();
+      }
       return;
     }
     if (islandState.mode === 'idle' || islandState.isCollapsing) {
@@ -302,6 +305,7 @@
   aria-label={islandState.mode === 'idle' || islandState.isCollapsing ? 'Expand Dynamic Island' : 'Dynamic Island'}
   onclick={handleSurfaceClick}
   onpointerdown={handleSurfacePointerDown}
+  onpointerup={handleWindowPointerUp}
   onkeydown={(e) => {
     if ((islandState.mode === 'idle' || islandState.isCollapsing) && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
