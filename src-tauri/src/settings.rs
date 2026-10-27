@@ -28,6 +28,10 @@ pub struct IslandSettings {
     pub show_git_in_pill: bool,
     #[serde(default = "default_true")]
     pub show_editor_in_pill: bool,
+    #[serde(default = "default_true")]
+    pub show_ports_in_pill: bool,
+    #[serde(default = "default_true")]
+    pub show_docker_in_pill: bool,
     #[serde(default)]
     pub watched_repo_path: Option<String>,
     pub autostart_enabled: bool,
@@ -49,6 +53,8 @@ impl Default for IslandSettings {
             show_agent_in_pill: true,
             show_git_in_pill: true,
             show_editor_in_pill: true,
+            show_ports_in_pill: true,
+            show_docker_in_pill: true,
             watched_repo_path: None,
             autostart_enabled: false,
         }
@@ -168,5 +174,7 @@ mod tests {
         assert_eq!(s.leave_delay_ms, 450);
         assert_eq!(s.inactivity_timeout_s, 12);
         assert_eq!(s.top_margin, 12.0);
+        assert!(s.show_ports_in_pill);
+        assert!(s.show_docker_in_pill);
     }
 }

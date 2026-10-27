@@ -8,6 +8,8 @@
   import SettingsPreview from './SettingsPreview.svelte';
   import GitPreview from './GitPreview.svelte';
   import EditorPreview from './EditorPreview.svelte';
+  import PortsPreview from './PortsPreview.svelte';
+  import DockerPreview from './DockerPreview.svelte';
 
   const media = $derived(islandState.currentMedia);
   const telemetry = $derived(islandState.telemetry);
@@ -71,6 +73,16 @@
   function handleOpenEditor(e: MouseEvent) {
     e.stopPropagation();
     islandState.openEditor();
+  }
+
+  function handleOpenPorts(e: MouseEvent) {
+    e.stopPropagation();
+    islandState.openPorts();
+  }
+
+  function handleOpenDocker(e: MouseEvent) {
+    e.stopPropagation();
+    islandState.openDocker();
   }
 
   function handleTogglePlay(e: MouseEvent) {
@@ -274,6 +286,14 @@
             {:else if telemetry && settings.show_system_in_pill}
               <span class="pill-badge pill-badge-sys" title="CPU: {telemetry.cpu_percent.toFixed(1)}% | RAM: {telemetry.mem_percent.toFixed(1)}%">
                 {Math.round(telemetry.cpu_percent)}% · {Math.round(telemetry.mem_percent)}%
+              </span>
+            {:else if islandState.runningDockerCount > 0 && settings.show_docker_in_pill}
+              <span class="pill-badge pill-badge-docker" title="{islandState.runningDockerCount} Docker containers running">
+                🐳 {islandState.runningDockerCount}
+              </span>
+            {:else if islandState.webPortsCount > 0 && settings.show_ports_in_pill}
+              <span class="pill-badge pill-badge-ports" title="{islandState.webPortsCount} web servers listening">
+                🌐 {islandState.webPortsCount}
               </span>
             {:else}
               <span class="pill-badge">Idle</span>
@@ -479,6 +499,57 @@
                 </div>
               </button>
 
+              <!-- Localhost & Ports Card -->
+              {#if settings.show_ports_in_pill}
+                <button
+                  type="button"
+                  class="action-card-btn"
+                  onclick={handleOpenPorts}
+                  aria-label="Open Localhost and Listening Ports Hub"
+                >
+                  <div class="card-icon ports-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="2" y1="12" x2="22" y2="12"></line>
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                    </svg>
+                  </div>
+                  <div class="card-text">
+                    <span class="card-title">
+                      Localhost & Ports ({islandState.webPortsCount} Web Servers)
+                    </span>
+                    <span class="card-subtitle">
+                      {islandState.webPortsCount} web servers • {islandState.ports.length} total listening
+                    </span>
+                  </div>
+                </button>
+              {/if}
+
+              <!-- Docker Containers Card -->
+              {#if settings.show_docker_in_pill}
+                <button
+                  type="button"
+                  class="action-card-btn"
+                  onclick={handleOpenDocker}
+                  aria-label="Open Docker Containers Hub"
+                >
+                  <div class="card-icon docker-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="2" y="2" width="20" height="20" rx="4"></rect>
+                      <path d="M7 10h10M7 14h10"></path>
+                    </svg>
+                  </div>
+                  <div class="card-text">
+                    <span class="card-title">
+                      Docker Hub ({islandState.runningDockerCount} Running)
+                    </span>
+                    <span class="card-subtitle">
+                      {islandState.runningDockerCount} active of {islandState.dockerContainers.length} containers
+                    </span>
+                  </div>
+                </button>
+              {/if}
+
               <!-- Settings & Preferences Card -->
               <button
                 type="button"
@@ -546,6 +617,14 @@
         <div class="panel-content">
           <EditorPreview />
         </div>
+      {:else if activePanelMode === 'ports'}
+        <div class="panel-content">
+          <PortsPreview />
+        </div>
+      {:else if activePanelMode === 'docker'}
+        <div class="panel-content">
+          <DockerPreview />
+        </div>
       {/if}
     </div>
   {/if}
@@ -601,7 +680,9 @@
   .island-surface.system,
   .island-surface.settings,
   .island-surface.git,
-  .island-surface.editor {
+  .island-surface.editor,
+  .island-surface.ports,
+  .island-surface.docker {
     border-radius: 20px;
     padding: 14px 16px;
     box-shadow: var(--island-shadow, 0 8px 32px rgba(0, 0, 0, 0.75));
@@ -1015,6 +1096,16 @@
 
   .card-icon.editor-icon {
     background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
+    color: #ffffff;
+  }
+
+  .card-icon.ports-icon {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: #ffffff;
+  }
+
+  .card-icon.docker-icon {
+    background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
     color: #ffffff;
   }
 

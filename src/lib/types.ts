@@ -1,4 +1,4 @@
-export type IslandMode = 'idle' | 'expanded' | 'agent' | 'media' | 'notification' | 'system' | 'settings' | 'git' | 'editor';
+export type IslandMode = 'idle' | 'expanded' | 'agent' | 'media' | 'notification' | 'system' | 'settings' | 'git' | 'editor' | 'ports' | 'docker';
 
 export interface IslandDimensions {
   width: number;
@@ -138,6 +138,28 @@ export interface IslandSettings {
   show_agent_in_pill: boolean;
   show_git_in_pill: boolean;
   show_editor_in_pill: boolean;
+  show_ports_in_pill: boolean;
+  show_docker_in_pill: boolean;
   watched_repo_path?: string | null;
   autostart_enabled: boolean;
+}
+
+export interface PortInfo {
+  port: number;
+  ip: string;
+  process?: string | null;
+  pid?: number | null;
+  container?: string | null;
+  category: 'web' | 'database' | 'service' | 'ide' | 'system';
+  is_openable: boolean;
+}
+
+export interface DockerContainerInfo {
+  id: string;
+  name: string;
+  image: string;
+  state: string;
+  status: string;
+  ports: string;
+  is_running: boolean;
 }

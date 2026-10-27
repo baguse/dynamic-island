@@ -35,7 +35,7 @@
     islandState.updateSettings({ top_margin: val });
   }
 
-  function handleToggleModule(module: 'system' | 'battery' | 'media' | 'build' | 'agent' | 'git' | 'editor' | 'autostart') {
+  function handleToggleModule(module: 'system' | 'battery' | 'media' | 'build' | 'agent' | 'git' | 'editor' | 'ports' | 'docker' | 'autostart') {
     if (module === 'system') {
       islandState.updateSettings({ show_system_in_pill: !settings.show_system_in_pill });
     } else if (module === 'battery') {
@@ -50,6 +50,10 @@
       islandState.updateSettings({ show_git_in_pill: !settings.show_git_in_pill });
     } else if (module === 'editor') {
       islandState.updateSettings({ show_editor_in_pill: !settings.show_editor_in_pill });
+    } else if (module === 'ports') {
+      islandState.updateSettings({ show_ports_in_pill: !settings.show_ports_in_pill });
+    } else if (module === 'docker') {
+      islandState.updateSettings({ show_docker_in_pill: !settings.show_docker_in_pill });
     } else if (module === 'autostart') {
       islandState.updateSettings({ autostart_enabled: !settings.autostart_enabled });
     }
@@ -325,6 +329,32 @@
           <span class="toggle-thumb"></span>
         </button>
       </div>
+
+      <div class="setting-item">
+        <span class="setting-name">Localhost & Ports Hub</span>
+        <button
+          type="button"
+          class="toggle-switch"
+          class:checked={settings.show_ports_in_pill}
+          onclick={() => handleToggleModule('ports')}
+          aria-label="Toggle localhost & ports module"
+        >
+          <span class="toggle-thumb"></span>
+        </button>
+      </div>
+
+      <div class="setting-item">
+        <span class="setting-name">Docker Containers Hub</span>
+        <button
+          type="button"
+          class="toggle-switch"
+          class:checked={settings.show_docker_in_pill}
+          onclick={() => handleToggleModule('docker')}
+          aria-label="Toggle docker containers module"
+        >
+          <span class="toggle-thumb"></span>
+        </button>
+      </div>
     </div>
 
     <!-- Section 4: System Integration -->
@@ -378,7 +408,7 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-    max-height: 360px;
+    max-height: 390px;
     overflow-y: auto;
     padding-right: 4px;
     scrollbar-width: thin;

@@ -1,3 +1,4 @@
+mod dev_hub;
 mod dev_ipc;
 mod git;
 mod media;
@@ -423,6 +424,55 @@ fn refresh_git_status(app: tauri::AppHandle, state: State<'_, AppState>, path: O
     Ok(status)
 }
 
+#[tauri::command]
+async fn get_listening_ports() -> Vec<dev_hub::PortInfo> {
+    tauri::async_runtime::spawn_blocking(dev_hub::get_listening_ports)
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+async fn kill_port_process(pid: u32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || dev_hub::kill_process_by_pid(pid))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_docker_containers() -> Vec<dev_hub::DockerContainerInfo> {
+    tauri::async_runtime::spawn_blocking(dev_hub::get_docker_containers)
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+async fn docker_restart_container(id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || dev_hub::docker_restart(&id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn docker_stop_container(id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || dev_hub::docker_stop(&id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn docker_start_container(id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || dev_hub::docker_start(&id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn open_url_in_browser(url: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || dev_hub::open_browser_url(&url))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
@@ -538,6 +588,13 @@ pub fn run() {
             submit_review_decision,
             get_git_status,
             refresh_git_status,
+            get_listening_ports,
+            kill_port_process,
+            get_docker_containers,
+            docker_restart_container,
+            docker_stop_container,
+            docker_start_container,
+            open_url_in_browser,
         ])
         .run(tauri::generate_context!())
         .expect("error while running dynamic-island application");

@@ -349,6 +349,85 @@ def cmd_status(args):
 
     return 0
 
+def cmd_ports(args):
+    resp = send_ipc_wait({"target": "ports"}, timeout=2)
+    ports = []
+    if isinstance(resp, dict) and resp.get("ok") and "ports" in resp:
+        ports = resp["ports"]
+    else:
+        try:
+            import re
+            out = subprocess.check_output(["ss", "-tlpn", "-H"], text=True)
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) < 4: continue
+                local = parts[3]
+                m = re.search(r':(\d+)$', local)
+                if not m: continue
+                port = int(m.group(1))
+                proc = None
+                pid = None
+                if len(parts) >= 6:
+                    pm = re.search(r'\"([^\"]+)\",pid=(\d+)', parts[5])
+                    if pm:
+                        proc = pm.group(1)
+                        pid = int(pm.group(2))
+                ports.append({"port": port, "process": proc, "pid": pid, "container": None, "category": "web" if port in (3000, 5173, 5174, 8080) else "service"})
+        except Exception:
+            pass
+
+    if not ports:
+        print("No active listening ports detected.")
+        return 0
+
+    print(f"Active Listening Ports ({len(ports)}):")
+    for p in ports:
+        port_num = p.get("port")
+        proc = p.get("process")
+        pid = p.get("pid")
+        container = p.get("container")
+        cat = p.get("category", "")
+        desc = f"🐳 {container}" if container else (f"{proc} (PID {pid})" if proc else "System")
+        tag = f"[{cat}]" if cat else ""
+        print(f"  :{port_num:<6} {tag:<10} {desc}")
+    return 0
+
+def cmd_docker(args):
+    resp = send_ipc_wait({"target": "docker"}, timeout=3)
+    containers = []
+    if isinstance(resp, dict) and resp.get("ok") and "containers" in resp:
+        containers = resp["containers"]
+    else:
+        try:
+            out = subprocess.check_output(["docker", "ps", "-a", "--format", "{{json .}}"], text=True)
+            for l in out.splitlines():
+                if l.strip():
+                    c = json.loads(l)
+                    containers.append({
+                        "id": c.get("ID", ""),
+                        "name": c.get("Names", ""),
+                        "image": c.get("Image", ""),
+                        "is_running": c.get("State", "").lower() == "running",
+                        "status": c.get("Status", ""),
+                        "ports": c.get("Ports", ""),
+                    })
+        except Exception as e:
+            print(f"Error querying Docker: {e}")
+            return 1
+
+    if not containers:
+        print("No Docker containers found.")
+        return 0
+
+    running = [c for c in containers if c.get("is_running")]
+    stopped = [c for c in containers if not c.get("is_running")]
+    print(f"Docker Containers ({len(running)} running, {len(stopped)} stopped):")
+    for c in containers:
+        dot = "🟢" if c.get("is_running") else "⚪"
+        ports = f"({c.get('ports')})" if c.get('ports') else ""
+        print(f"  {dot} {c.get('name'):<22} {c.get('image'):<20} {c.get('status')} {ports}")
+    return 0
+
 def cmd_build(args):
     if args.run:
         cmd_str = args.run
@@ -1063,6 +1142,12 @@ def main():
     # Status sub-command
     subparsers.add_parser("status", help="Show current AI agent, build, editor, and git status")
 
+    # Ports sub-command
+    subparsers.add_parser("ports", help="List active listening ports and dev servers")
+
+    # Docker sub-command
+    subparsers.add_parser("docker", help="List and inspect Docker containers")
+
     # Notify sub-command
     notify_parser = subparsers.add_parser("notify", help="Send alert notification")
     notify_parser.add_argument("title", help="Notification title")
@@ -1093,6 +1178,10 @@ def main():
         sys.exit(cmd_git(args))
     elif args.subcommand == "status":
         sys.exit(cmd_status(args))
+    elif args.subcommand == "ports":
+        sys.exit(cmd_ports(args))
+    elif args.subcommand == "docker":
+        sys.exit(cmd_docker(args))
     elif args.subcommand == "build":
         sys.exit(cmd_build(args))
     elif args.subcommand == "notify":

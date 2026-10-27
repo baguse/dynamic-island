@@ -136,6 +136,10 @@ pub enum IpcMessage {
     },
     #[serde(rename = "git_refresh")]
     GitRefresh,
+    #[serde(rename = "ports")]
+    Ports,
+    #[serde(rename = "docker")]
+    Docker,
     #[serde(rename = "editor")]
     Editor {
         editor: Option<String>,
@@ -651,6 +655,24 @@ pub fn process_ipc_message(
             let git_status = crate::git::get_git_status(target_path.as_deref());
             let _ = app_handle.emit("git-status-change", &git_status);
             r#"{"ok":true}"#.to_string()
+        }
+
+        IpcMessage::Ports => {
+            let ports = crate::dev_hub::get_listening_ports();
+            serde_json::to_string(&serde_json::json!({
+                "ok": true,
+                "ports": ports
+            }))
+            .unwrap_or_else(|_| r#"{"ok":false}"#.to_string())
+        }
+
+        IpcMessage::Docker => {
+            let containers = crate::dev_hub::get_docker_containers();
+            serde_json::to_string(&serde_json::json!({
+                "ok": true,
+                "containers": containers
+            }))
+            .unwrap_or_else(|_| r#"{"ok":false}"#.to_string())
         }
 
         IpcMessage::Editor {

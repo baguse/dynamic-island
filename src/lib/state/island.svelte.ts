@@ -14,6 +14,8 @@ import type {
   IslandTheme,
   GitStatus,
   EditorPresence,
+  PortInfo,
+  DockerContainerInfo,
 } from '../types';
 
 export const DEFAULT_SETTINGS: IslandSettings = {
@@ -30,6 +32,8 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   show_agent_in_pill: true,
   show_git_in_pill: true,
   show_editor_in_pill: true,
+  show_ports_in_pill: true,
+  show_docker_in_pill: true,
   watched_repo_path: null,
   autostart_enabled: false,
 };
@@ -41,9 +45,11 @@ export const BASE_DIMENSIONS: Record<IslandMode, IslandDimensions> = {
   media: { width: 400, height: 280 },
   notification: { width: 380, height: 96 },
   system: { width: 400, height: 350 },
-  settings: { width: 400, height: 460 },
+  settings: { width: 400, height: 480 },
   git: { width: 400, height: 380 },
   editor: { width: 400, height: 320 },
+  ports: { width: 400, height: 400 },
+  docker: { width: 400, height: 420 },
 };
 
 class IslandStore {
@@ -85,6 +91,16 @@ class IslandStore {
     recent_commits: [],
   });
   editor = $state<EditorPresence | null>(null);
+  ports = $state<PortInfo[]>([]);
+  dockerContainers = $state<DockerContainerInfo[]>([]);
+
+  get webPortsCount(): number {
+    return this.ports.filter((p) => p.category === 'web').length;
+  }
+
+  get runningDockerCount(): number {
+    return this.dockerContainers.filter((c) => c.is_running).length;
+  }
 
   // Hover & Inactivity Settings
   hoverExpandDelayMs = 220;    // Hover intent delay to expand
@@ -208,6 +224,12 @@ class IslandStore {
     }
     if (this.mode === 'editor') {
       return 320;
+    }
+    if (this.mode === 'ports') {
+      return 400;
+    }
+    if (this.mode === 'docker') {
+      return 420;
     }
     return BASE_DIMENSIONS[this.mode].height;
   }
@@ -387,6 +409,82 @@ class IslandStore {
   async openGit() {
     await this.refreshGitStatus();
     await this.setMode('git');
+  }
+
+  async openPorts() {
+    await this.refreshPorts();
+    await this.setMode('ports');
+  }
+
+  async openDocker() {
+    await this.refreshDocker();
+    await this.setMode('docker');
+  }
+
+  async refreshPorts() {
+    try {
+      const data = await invoke<PortInfo[]>('get_listening_ports');
+      if (data) {
+        this.ports = data;
+      }
+    } catch (err) {
+      console.debug('Failed to fetch listening ports:', err);
+    }
+  }
+
+  async killPortProcess(pid: number) {
+    try {
+      await invoke('kill_port_process', { pid });
+      await this.refreshPorts();
+    } catch (err) {
+      console.error('Failed to kill process:', err);
+    }
+  }
+
+  async refreshDocker() {
+    try {
+      const data = await invoke<DockerContainerInfo[]>('get_docker_containers');
+      if (data) {
+        this.dockerContainers = data;
+      }
+    } catch (err) {
+      console.debug('Failed to fetch docker containers:', err);
+    }
+  }
+
+  async restartDocker(id: string) {
+    try {
+      await invoke('docker_restart_container', { id });
+      await this.refreshDocker();
+    } catch (err) {
+      console.error('Failed to restart container:', err);
+    }
+  }
+
+  async stopDocker(id: string) {
+    try {
+      await invoke('docker_stop_container', { id });
+      await this.refreshDocker();
+    } catch (err) {
+      console.error('Failed to stop container:', err);
+    }
+  }
+
+  async startDocker(id: string) {
+    try {
+      await invoke('docker_start_container', { id });
+      await this.refreshDocker();
+    } catch (err) {
+      console.error('Failed to start container:', err);
+    }
+  }
+
+  async openBrowser(url: string) {
+    try {
+      await invoke('open_url_in_browser', { url });
+    } catch (err) {
+      console.error('Failed to open browser:', err);
+    }
   }
 
   async refreshGitStatus() {
@@ -876,6 +974,10 @@ class IslandStore {
     } catch (err) {
       console.debug('Failed to register tray-settings listener:', err);
     }
+
+    // 9. Initial Developer Hub sample
+    this.refreshPorts();
+    this.refreshDocker();
   }
 
   destroyServices() {
