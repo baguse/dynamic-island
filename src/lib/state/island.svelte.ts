@@ -310,6 +310,54 @@ class IslandStore {
     }
   }
 
+  // Watchdog timer for background builds
+  private buildWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private checkBuildWatchdog() {
+    if (this.buildWatchdogTimer) {
+      clearTimeout(this.buildWatchdogTimer);
+      this.buildWatchdogTimer = null;
+    }
+    if (this.build.state === 'running') {
+      const MAX_BUILD_DURATION_MS = 180_000; // 3 minutes auto-clear timeout
+      let remaining = MAX_BUILD_DURATION_MS;
+      if (this.build.started_at) {
+        const elapsed = Date.now() - this.build.started_at;
+        remaining = Math.max(1000, MAX_BUILD_DURATION_MS - elapsed);
+      }
+      this.buildWatchdogTimer = setTimeout(async () => {
+        if (this.build.state === 'running') {
+          console.log('[Dynamic Island] Auto-clearing stuck build after 3m timeout');
+          await this.clearBuild();
+        }
+      }, remaining);
+    }
+  }
+
+  async clearBuild() {
+    if (this.buildWatchdogTimer) {
+      clearTimeout(this.buildWatchdogTimer);
+      this.buildWatchdogTimer = null;
+    }
+    const cleared: BuildStatus = {
+      command: '',
+      state: 'idle',
+      duration_ms: null,
+      message: 'Cleared by user/timeout',
+      exit_code: null,
+      started_at: null,
+    };
+    this.build = cleared;
+    try {
+      await invoke('set_build_status', { status: cleared });
+    } catch (e) {
+      console.debug('Failed to set build status:', e);
+    }
+    if (this.mode === 'idle') {
+      await this.syncNativeWindow();
+    }
+  }
+
   async updateBuildStatus(status: Partial<BuildStatus>) {
     this.resetInactivityTimer();
     const updated: BuildStatus = {
@@ -321,6 +369,7 @@ class IslandStore {
     } catch {
       this.build = updated;
     }
+    this.checkBuildWatchdog();
   }
 
   async approveAgentReview() {
@@ -874,6 +923,7 @@ class IslandStore {
       if (dev) {
         this.agent = dev.agent;
         this.build = dev.build;
+        this.checkBuildWatchdog();
         if (dev.editor) {
           this.editor = dev.editor;
         }
@@ -914,6 +964,7 @@ class IslandStore {
       this.unlistenBuild = await listen<BuildStatus>('build-status-change', async (event) => {
         const wasActive = this.hasActiveBuild;
         this.build = event.payload;
+        this.checkBuildWatchdog();
         const nowActive = this.hasActiveBuild;
 
         if (this.mode === 'idle' && wasActive !== nowActive) {

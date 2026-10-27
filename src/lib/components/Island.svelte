@@ -154,7 +154,14 @@
             </div>
           </div>
           <div class="pill-right">
-            <span class="pill-badge pill-badge-build">⚡ Build</span>
+            <button
+              type="button"
+              class="pill-badge pill-badge-build"
+              onclick={(e) => { e.stopPropagation(); islandState.clearBuild(); }}
+              title="Click to clear build indicator"
+            >
+              ⚡ Build
+            </button>
           </div>
         </div>
       {:else if islandState.hasActiveAgent && settings.show_agent_in_pill}
@@ -397,17 +404,32 @@
                   <span class="tool-label">Build Status:</span>
                   <div class="tool-actions">
                     {#if build.state === 'running'}
-                      <span class="action-chip-btn active" title="Active background compilation">
-                        ⚡ {build.command}...
-                      </span>
+                      <button
+                        type="button"
+                        class="action-chip-btn active"
+                        onclick={() => islandState.clearBuild()}
+                        title="Running: {build.command} (Click to clear/dismiss)"
+                      >
+                        ⚡ {build.command}... ✕
+                      </button>
                     {:else if build.state === 'success'}
-                      <span class="action-chip-btn chip-success" title="Last build passed">
-                        ✓ {build.command ? build.command.split(' ')[0] : 'Build'} passed
-                      </span>
+                      <button
+                        type="button"
+                        class="action-chip-btn chip-success"
+                        onclick={() => islandState.clearBuild()}
+                        title="Last build passed (Click to dismiss)"
+                      >
+                        ✓ {build.command ? build.command.split(' ')[0] : 'Build'} passed ✕
+                      </button>
                     {:else if build.state === 'failed'}
-                      <span class="action-chip-btn chip-failed" title="Last build failed">
-                        ✗ {build.command ? build.command.split(' ')[0] : 'Build'} failed
-                      </span>
+                      <button
+                        type="button"
+                        class="action-chip-btn chip-failed"
+                        onclick={() => islandState.clearBuild()}
+                        title="Last build failed (Click to dismiss)"
+                      >
+                        ✗ {build.command ? build.command.split(' ')[0] : 'Build'} failed ✕
+                      </button>
                     {/if}
                   </div>
                 </div>

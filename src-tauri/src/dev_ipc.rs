@@ -4,7 +4,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -112,10 +112,14 @@ pub enum IpcMessage {
         timeout_sec: Option<u64>,
     },
     Build {
+        #[serde(default)]
         command: String,
         state: BuildState,
+        #[serde(default)]
         duration_ms: Option<u64>,
+        #[serde(default)]
         message: Option<String>,
+        #[serde(default)]
         exit_code: Option<i32>,
     },
     Notification {
@@ -259,9 +263,22 @@ impl DevManager {
     }
 
     pub fn get_payload(&self) -> DevStatusPayload {
+        let mut build = self.build.lock().unwrap();
+        if build.state == BuildState::Running {
+            if let Some(started_at) = build.started_at {
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                if now_ms.saturating_sub(started_at) > 180_000 {
+                    build.state = BuildState::Idle;
+                    build.message = Some("Auto-cleared after 3m timeout".to_string());
+                }
+            }
+        }
         DevStatusPayload {
             agent: self.agent.lock().unwrap().clone(),
-            build: self.build.lock().unwrap().clone(),
+            build: build.clone(),
             editor: self.editor.lock().unwrap().clone(),
         }
     }
@@ -549,8 +566,30 @@ pub fn process_ipc_message(
             };
 
             *build = new_build.clone();
+            drop(build);
             let _ = app_handle.emit("build-status-change", &new_build);
             write_state_to_disk(dev_manager);
+
+            // Auto-clear watchdog: if running, auto-expire after 3 minutes (180s)
+            if state == BuildState::Running {
+                let app_handle_clone = app_handle.clone();
+                let build_started_at = started_at;
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(180));
+                    if let Some(state) = app_handle_clone.try_state::<crate::AppState>() {
+                        let mut b = state.dev_manager.build.lock().unwrap();
+                        if b.state == BuildState::Running && b.started_at == build_started_at {
+                            log::info!("Auto-clearing build '{}' after 3m timeout", b.command);
+                            b.state = BuildState::Idle;
+                            b.message = Some("Auto-cleared after 3m timeout".to_string());
+                            let cleared_build = b.clone();
+                            drop(b);
+                            let _ = app_handle_clone.emit("build-status-change", &cleared_build);
+                            write_state_to_disk(&state.dev_manager);
+                        }
+                    }
+                });
+            }
 
             if state == BuildState::Success {
                 let duration_str = duration_ms
@@ -755,6 +794,16 @@ mod tests {
             assert_eq!(command, "cargo test");
             assert_eq!(state, BuildState::Success);
             assert_eq!(duration_ms, Some(1200));
+        } else {
+            panic!("Expected IpcMessage::Build");
+        }
+
+        // Test minimal clear/idle build message
+        let clear_json = r#"{"target":"build","state":"idle"}"#;
+        let clear_msg: IpcMessage = serde_json::from_str(clear_json).expect("deserialize clear build");
+        if let IpcMessage::Build { command, state, .. } = clear_msg {
+            assert_eq!(command, "");
+            assert_eq!(state, BuildState::Idle);
         } else {
             panic!("Expected IpcMessage::Build");
         }

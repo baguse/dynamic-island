@@ -429,6 +429,17 @@ def cmd_docker(args):
     return 0
 
 def cmd_build(args):
+    if getattr(args, "clear", False) or args.state == "idle":
+        payload = {
+            "target": "build",
+            "command": "",
+            "state": "idle"
+        }
+        success = send_ipc(payload)
+        if success:
+            print("✓ Dynamic Island: Cleared build status")
+        return 0 if success else 1
+
     if args.run:
         cmd_str = args.run
         print(f"[island-cli] Tracking build: '{cmd_str}'...")
@@ -440,24 +451,49 @@ def cmd_build(args):
         })
 
         start_time = time.time()
-        res = subprocess.run(cmd_str, shell=True)
-        elapsed_ms = int((time.time() - start_time) * 1000)
+        try:
+            res = subprocess.run(cmd_str, shell=True)
+            elapsed_ms = int((time.time() - start_time) * 1000)
 
-        state = "success" if res.returncode == 0 else "failed"
-        send_ipc({
-            "target": "build",
-            "command": cmd_str,
-            "state": state,
-            "duration_ms": elapsed_ms,
-            "exit_code": res.returncode
-        })
+            state = "success" if res.returncode == 0 else "failed"
+            send_ipc({
+                "target": "build",
+                "command": cmd_str,
+                "state": state,
+                "duration_ms": elapsed_ms,
+                "exit_code": res.returncode
+            })
 
-        duration_sec = elapsed_ms / 1000.0
-        if res.returncode == 0:
-            print(f"✓ Dynamic Island: Build PASSED ({duration_sec:.2f}s)")
-        else:
-            print(f"✗ Dynamic Island: Build FAILED with exit code {res.returncode} ({duration_sec:.2f}s)")
-        return res.returncode
+            duration_sec = elapsed_ms / 1000.0
+            if res.returncode == 0:
+                print(f"✓ Dynamic Island: Build PASSED ({duration_sec:.2f}s)")
+            else:
+                print(f"✗ Dynamic Island: Build FAILED with exit code {res.returncode} ({duration_sec:.2f}s)")
+            return res.returncode
+        except KeyboardInterrupt:
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            send_ipc({
+                "target": "build",
+                "command": cmd_str,
+                "state": "failed",
+                "message": "Cancelled by user (SIGINT)",
+                "duration_ms": elapsed_ms,
+                "exit_code": 130
+            })
+            print(f"\n[island-cli] Build cancelled by user (Ctrl+C)")
+            return 130
+        except Exception as e:
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            send_ipc({
+                "target": "build",
+                "command": cmd_str,
+                "state": "failed",
+                "message": str(e),
+                "duration_ms": elapsed_ms,
+                "exit_code": 1
+            })
+            print(f"[island-cli] Build error: {e}")
+            return 1
 
     payload = {
         "target": "build",
@@ -1130,6 +1166,7 @@ def main():
     # Build sub-command
     build_parser = subparsers.add_parser("build", help="Update or track build status")
     build_parser.add_argument("--run", "-r", help="Run command, monitor its duration and exit code")
+    build_parser.add_argument("--clear", action="store_true", help="Clear active build status back to idle")
     build_parser.add_argument("--state", choices=["idle", "running", "success", "failed"], default="running")
     build_parser.add_argument("--command", "-c", help="Command description")
     build_parser.add_argument("--duration", "-d", type=int, help="Duration in milliseconds")
