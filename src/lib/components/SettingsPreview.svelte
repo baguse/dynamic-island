@@ -1,7 +1,8 @@
 <script lang="ts">
   import IslandHeader from './IslandHeader.svelte';
+  import PixelMascot from './PixelMascot.svelte';
   import { islandState } from '../state/island.svelte';
-  import type { IslandTheme, ModuleKey, IslandSettings } from '../types';
+  import type { IslandTheme, ModuleKey, IslandSettings, MascotState } from '../types';
 
   const settings = $derived(islandState.settings);
 
@@ -263,6 +264,8 @@
     await islandState.updateSettings({ weather_city: newCity });
     await islandState.refreshWeather(newCity || undefined);
   }
+
+  let previewMascotMood = $state<MascotState | undefined>(undefined);
 </script>
 
 <div class="settings-wrapper">
@@ -910,7 +913,181 @@
       {/if}
     </div>
 
-    <!-- Section 5: System Integration -->
+    <!-- Section 5: Desktop Cyber-Pet Companion -->
+    <div class="settings-group">
+      <div class="group-header">
+        <div class="group-title-col">
+          <span class="group-title">Desktop Cyber-Pet Companion</span>
+          <span class="group-desc">Interactive pixel-art mascot reacting to music, builds, and AI agent</span>
+        </div>
+        {#if settings.mascot_enabled !== false}
+          <span class="mascot-status-pill">Active</span>
+        {/if}
+      </div>
+
+      <!-- Toggle Mascot -->
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-name">Enable Cyber-Pet</span>
+          <span class="setting-desc">Perches in compact pill and expanded topbar</span>
+        </div>
+        <button
+          type="button"
+          class="toggle-switch"
+          class:checked={settings.mascot_enabled !== false}
+          onclick={() => islandState.updateSettings({ mascot_enabled: settings.mascot_enabled === false })}
+          aria-label="Toggle mascot companion"
+        >
+          <span class="toggle-thumb"></span>
+        </button>
+      </div>
+
+      {#if settings.mascot_enabled !== false}
+        <!-- Interactive Petting Toggle -->
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-name">Interactive Petting</span>
+            <span class="setting-desc">Click on mascot to pet it, trigger happy purrs & floating hearts</span>
+          </div>
+          <button
+            type="button"
+            class="toggle-switch"
+            class:checked={settings.mascot_interactive !== false}
+            onclick={() => islandState.updateSettings({ mascot_interactive: settings.mascot_interactive === false })}
+            aria-label="Toggle interactive petting"
+          >
+            <span class="toggle-thumb"></span>
+          </button>
+        </div>
+
+        <!-- Mascot Character Selector -->
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-name">Mascot Character</span>
+            <span class="setting-desc">Choose your companion persona</span>
+          </div>
+          <div class="mascot-character-grid">
+            <button
+              type="button"
+              class="mascot-choice-btn"
+              class:active={settings.mascot_type === 'cat' || !settings.mascot_type}
+              onclick={() => islandState.updateSettings({ mascot_type: 'cat' })}
+            >
+              <span class="mascot-choice-icon">🐱</span>
+              <div class="mascot-choice-text">
+                <span class="mascot-choice-title">Cyber-Cat</span>
+                <span class="mascot-choice-desc">Bongo typing & neon beats</span>
+              </div>
+            </button>
+            <button
+              type="button"
+              class="mascot-choice-btn"
+              class:active={settings.mascot_type === 'duck'}
+              onclick={() => islandState.updateSettings({ mascot_type: 'duck' })}
+            >
+              <span class="mascot-choice-icon">🦆</span>
+              <div class="mascot-choice-text">
+                <span class="mascot-choice-title">Chill Duck</span>
+                <span class="mascot-choice-desc">Sunglasses & wing typing</span>
+              </div>
+            </button>
+            <button
+              type="button"
+              class="mascot-choice-btn"
+              class:active={settings.mascot_type === 'robot'}
+              onclick={() => islandState.updateSettings({ mascot_type: 'robot' })}
+            >
+              <span class="mascot-choice-icon">🤖</span>
+              <div class="mascot-choice-text">
+                <span class="mascot-choice-title">Retro Bot</span>
+                <span class="mascot-choice-desc">Equalizer CRT & turbo treads</span>
+              </div>
+            </button>
+            <button
+              type="button"
+              class="mascot-choice-btn"
+              class:active={settings.mascot_type === 'fox'}
+              onclick={() => islandState.updateSettings({ mascot_type: 'fox' })}
+            >
+              <span class="mascot-choice-icon">🦊</span>
+              <div class="mascot-choice-text">
+                <span class="mascot-choice-title">Kitsune Fox</span>
+                <span class="mascot-choice-desc">Fluffy tail & spirit flame</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Live Interactive Playground Card -->
+        <div class="mascot-preview-card">
+          <div class="mascot-preview-avatar">
+            <PixelMascot size="lg" stateOverride={previewMascotMood} />
+          </div>
+          <div class="mascot-preview-content">
+            <div class="mascot-preview-header">
+              <span class="mascot-preview-name">{
+                settings.mascot_type === 'duck' ? 'Chill Duck' :
+                settings.mascot_type === 'robot' ? 'Retro Bot' :
+                settings.mascot_type === 'fox' ? 'Kitsune Fox' : 'Cyber-Cat'
+              } Playground</span>
+              <span class="mascot-preview-hint">Test reactive expressions below or click mascot to pet:</span>
+            </div>
+            <div class="mood-chips-row">
+              <button
+                type="button"
+                class="mood-chip"
+                class:active={previewMascotMood === undefined}
+                onclick={() => (previewMascotMood = undefined)}
+              >
+                Auto (Live)
+              </button>
+              <button
+                type="button"
+                class="mood-chip"
+                class:active={previewMascotMood === 'sleeping'}
+                onclick={() => (previewMascotMood = 'sleeping')}
+              >
+                😴 Sleeping
+              </button>
+              <button
+                type="button"
+                class="mood-chip"
+                class:active={previewMascotMood === 'music'}
+                onclick={() => (previewMascotMood = 'music')}
+              >
+                🎧 Grooving
+              </button>
+              <button
+                type="button"
+                class="mood-chip"
+                class:active={previewMascotMood === 'typing'}
+                onclick={() => (previewMascotMood = 'typing')}
+              >
+                ⚡ Bongo Typing
+              </button>
+              <button
+                type="button"
+                class="mood-chip"
+                class:active={previewMascotMood === 'agent'}
+                onclick={() => (previewMascotMood = 'agent')}
+              >
+                🤖 AI Visor
+              </button>
+              <button
+                type="button"
+                class="mood-chip"
+                class:active={previewMascotMood === 'petting'}
+                onclick={() => (previewMascotMood = 'petting')}
+              >
+                ♥ Purring
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
+    </div>
+
+    <!-- Section 6: System Integration -->
     <div class="settings-group">
       <span class="group-title">System Integration</span>
 
@@ -1826,6 +2003,163 @@
   .btn-save-city:hover {
     background: rgba(59, 130, 246, 0.35);
     color: #ffffff;
+  }
+
+  /* Desktop Cyber-Pet Styles */
+  .mascot-status-pill {
+    font-size: 10px;
+    font-weight: 600;
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.28);
+    padding: 2px 7px;
+    border-radius: 9999px;
+  }
+
+  .mascot-character-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    width: 100%;
+  }
+
+  .mascot-choice-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 4px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--island-card-border, rgba(255, 255, 255, 0.08));
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .mascot-choice-btn:hover:not(.disabled) {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .mascot-choice-btn.active {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: var(--island-accent, #3b82f6);
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+  }
+
+  .mascot-choice-btn.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .mascot-choice-icon {
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .mascot-choice-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .mascot-choice-title {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--island-text-primary, #ffffff);
+  }
+
+  .mascot-choice-desc {
+    font-size: 8.5px;
+    color: var(--island-text-muted, #94a3b8);
+  }
+
+  .mascot-choice-badge {
+    font-size: 8px;
+    font-weight: 600;
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 1px 4px;
+    border-radius: 4px;
+  }
+
+  .mascot-preview-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--island-card-border, rgba(255, 255, 255, 0.08));
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+
+  .mascot-preview-avatar {
+    width: 72px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    flex-shrink: 0;
+  }
+
+  .mascot-preview-content {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mascot-preview-header {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .mascot-preview-name {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--island-text-primary, #ffffff);
+  }
+
+  .mascot-preview-hint {
+    font-size: 9.5px;
+    color: var(--island-text-muted, #94a3b8);
+  }
+
+  .mood-chips-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .mood-chip {
+    font-size: 9.5px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--island-text-secondary, #cbd5e1);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .mood-chip:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+  }
+
+  .mood-chip.active {
+    background: var(--island-accent, #3b82f6);
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.25);
+    font-weight: 600;
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
   }
 
   /* Bottom bar */

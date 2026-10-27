@@ -61,6 +61,9 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   ambient_sky_theme: 'auto',
   ambient_sky_intensity: 'subtle',
   weather_city: null,
+  mascot_enabled: true,
+  mascot_type: 'cat',
+  mascot_interactive: true,
   autostart_enabled: false,
 };
 

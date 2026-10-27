@@ -19,6 +19,7 @@
   import DropShelfPreview from './DropShelfPreview.svelte';
   import AudioEqualizer from './AudioEqualizer.svelte';
   import AmbientSkyCanvas from './AmbientSkyCanvas.svelte';
+  import PixelMascot from './PixelMascot.svelte';
 
   const media = $derived(islandState.currentMedia);
   const telemetry = $derived(islandState.telemetry);
@@ -327,6 +328,7 @@
         <!-- Compact Pill with Active Terminal Build -->
         <div class="pill-content">
           <div class="pill-left">
+            <PixelMascot size="sm" />
             <span class="spinner build-spinner" aria-hidden="true"></span>
             <div class="pill-media-text">
               <span class="pill-track-title">{build.command}</span>
@@ -348,6 +350,7 @@
         <!-- Compact Pill with Active AI Agent -->
         <div class="pill-content">
           <div class="pill-left">
+            <PixelMascot size="sm" />
             <span class="agent-pill-dot state-{agent.state}" aria-hidden="true"></span>
             <div class="pill-media-text">
               <span class="pill-track-title">{agent.task || agent.name}</span>
@@ -368,6 +371,7 @@
         <!-- Compact Pill with Media Controls -->
         <div class="pill-content media-pill">
           <div class="pill-left">
+            <PixelMascot size="sm" />
             <AudioEqualizer size="sm" isPlaying={islandState.isPlaying} />
             <div class="pill-media-text">
               <span class="pill-track-title">{media.title}</span>
@@ -458,6 +462,7 @@
         <!-- Compact Idle Pill -->
         <div class="pill-content">
           <div class="pill-left">
+            <PixelMascot size="sm" />
             <span class="status-dot-pulse" aria-hidden="true"></span>
             <span class="pill-title">Dynamic Island</span>
           </div>
@@ -533,6 +538,7 @@
             <div class="topbar-left">
               <span class="topbar-logo" aria-hidden="true">🏝️</span>
               <span class="topbar-title">Dynamic Island</span>
+              <PixelMascot size="sm" />
               <button
                 type="button"
                 class="topbar-chip-btn position-btn"

@@ -46,6 +46,10 @@ fn default_ambient_sky_intensity() -> String {
     "subtle".to_string()
 }
 
+fn default_mascot_type() -> String {
+    "cat".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IslandSettings {
     #[serde(default = "default_theme")]
@@ -98,6 +102,12 @@ pub struct IslandSettings {
     pub ambient_sky_intensity: String,
     #[serde(default)]
     pub weather_city: Option<String>,
+    #[serde(default = "default_true")]
+    pub mascot_enabled: bool,
+    #[serde(default = "default_mascot_type")]
+    pub mascot_type: String,
+    #[serde(default = "default_true")]
+    pub mascot_interactive: bool,
     pub autostart_enabled: bool,
 }
 
@@ -134,6 +144,9 @@ impl Default for IslandSettings {
             ambient_sky_theme: "auto".to_string(),
             ambient_sky_intensity: "subtle".to_string(),
             weather_city: None,
+            mascot_enabled: true,
+            mascot_type: "cat".to_string(),
+            mascot_interactive: true,
             autostart_enabled: false,
         }
     }
@@ -262,6 +275,9 @@ mod tests {
         assert!(s.ambient_sky_enabled);
         assert_eq!(s.ambient_sky_theme, "auto");
         assert_eq!(s.ambient_sky_intensity, "subtle");
+        assert!(s.mascot_enabled);
+        assert_eq!(s.mascot_type, "cat");
+        assert!(s.mascot_interactive);
     }
 
     #[test]
@@ -276,6 +292,9 @@ mod tests {
         assert!(s.ambient_sky_enabled);
         assert_eq!(s.ambient_sky_theme, "auto");
         assert_eq!(s.ambient_sky_intensity, "subtle");
+        assert!(s.mascot_enabled);
+        assert_eq!(s.mascot_type, "cat");
+        assert!(s.mascot_interactive);
     }
 
     #[test]

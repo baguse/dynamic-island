@@ -55,6 +55,8 @@ export interface AudioSpectrumData {
 
 export type SkyTheme = 'auto' | 'stars' | 'rain' | 'sakura' | 'clouds' | 'snow';
 export type SkyIntensity = 'subtle' | 'medium' | 'vivid';
+export type MascotType = 'cat' | 'duck' | 'robot' | 'fox';
+export type MascotState = 'sleeping' | 'music' | 'typing' | 'agent' | 'alert' | 'petting';
 
 export interface WeatherData {
   temp_c: number;
@@ -206,6 +208,9 @@ export interface IslandSettings {
   ambient_sky_theme?: SkyTheme;
   ambient_sky_intensity?: SkyIntensity;
   weather_city?: string | null;
+  mascot_enabled?: boolean;
+  mascot_type?: MascotType;
+  mascot_interactive?: boolean;
   autostart_enabled: boolean;
 }
 
