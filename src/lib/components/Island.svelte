@@ -503,22 +503,17 @@
       {#if activePanelMode === 'notification'}
         <!-- Notification Banner Mode -->
         <NotificationBanner />
-      {:else if activePanelMode === 'expanded'}
-        <!-- Overview Panel Mode -->
-        <div class="panel-content">
-          <IslandHeader title="Dynamic Island" />
-
-          <div class="panel-body">
-            <p class="panel-description">
-              Floating desktop companion on Ubuntu Cinnamon (X11).
-            </p>
-
-            <div class="badge-row">
-              <span class="status-tag">X11</span>
-              <span class="status-tag">Always-On-Top</span>
+      {:else}
+        <!-- Unified Side-by-Side Dashboard Layout -->
+        <div class="dashboard-container">
+          <!-- Top Window Bar -->
+          <header class="dashboard-topbar">
+            <div class="topbar-left">
+              <span class="topbar-logo" aria-hidden="true">🏝️</span>
+              <span class="topbar-title">Dynamic Island</span>
               <button
                 type="button"
-                class="status-tag position-switch-tag"
+                class="topbar-chip-btn position-btn"
                 onclick={handleCyclePosition}
                 title="Click to cycle position: Center ➔ Right ➔ Left (Quick Dodge)"
               >
@@ -527,411 +522,351 @@
               {#if islandState.monitors.length > 1}
                 <button
                   type="button"
-                  class="status-tag monitor-switch-tag"
+                  class="topbar-chip-btn monitor-btn"
                   onclick={handleCycleMonitor}
                   title="Click to cycle Dynamic Island to next monitor"
                 >
                   Screen: {islandState.currentMonitorName} ⮂
                 </button>
               {:else}
-                <span class="status-tag">Screen: {islandState.currentMonitorName}</span>
+                <span class="topbar-chip-btn non-clickable">Screen: {islandState.currentMonitorName}</span>
               {/if}
             </div>
 
-            <div class="action-grid">
-              {#each islandState.moduleOrder as modKey (modKey)}
-                {#if modKey === 'media'}
-                  <!-- Media Quick Card -->
-                  {#if settings.show_media_in_pill}
+            <div class="topbar-right">
+              <!-- Quick Hardware Mic Mute Toggle -->
+              <button
+                type="button"
+                class="topbar-mic-badge"
+                class:muted={isMicMuted}
+                onclick={handleToggleMic}
+                title={isMicMuted ? 'Microphone is MUTED (Click to Unmute)' : 'Microphone is LIVE (Click to Mute)'}
+              >
+                <span class="mic-dot" class:muted-pulse={isMicMuted} class:active={!isMicMuted}></span>
+                <span class="mic-text">{isMicMuted ? 'Muted' : 'Mic Active'}</span>
+              </button>
+
+              <!-- Collapse / Minimize to Pill -->
+              <button
+                type="button"
+                class="topbar-icon-btn collapse-btn"
+                onclick={(e) => { e.stopPropagation(); islandState.collapse(); }}
+                title="Collapse to compact pill"
+                aria-label="Collapse Island"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="18 15 12 9 6 15"></polyline>
+                </svg>
+              </button>
+            </div>
+          </header>
+
+          <!-- Main Area: Sidebar + Detail Pane -->
+          <div class="dashboard-body">
+            <!-- Left Sidebar Navigation -->
+            <aside class="dashboard-sidebar">
+              <nav class="sidebar-nav">
+                {#each islandState.moduleOrder as modKey (modKey)}
+                  {#if modKey === 'media' && settings.show_media_in_pill}
                     <button
                       type="button"
-                      class="action-card-btn"
+                      class="nav-tab-btn"
+                      class:active={activePanelMode === 'media'}
                       onclick={handleOpenMedia}
-                      aria-label="Open Media Player"
                     >
-                      <div class="card-icon media-icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <div class="tab-icon media-tab-icon">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                           <path d="M9 18V5l12-2v13"></path>
                           <circle cx="6" cy="18" r="3"></circle>
                           <circle cx="18" cy="16" r="3"></circle>
                         </svg>
                       </div>
-                      <div class="card-text">
-                        <span class="card-title">
-                          {islandState.hasActiveMedia && media ? `Now Playing: ${media.title}` : 'Media Player (MPRIS)'}
-                        </span>
-                        <span class="card-subtitle">
-                          {islandState.hasActiveMedia && media ? `${media.artist} • ${media.player_name}` : 'Control Spotify, VLC, browser playback'}
-                        </span>
-                      </div>
-                    </button>
-                  {/if}
-                {:else if modKey === 'agent'}
-                  <!-- AI Agent Card -->
-                  {#if settings.show_agent_in_pill}
-                    <button
-                      type="button"
-                      class="action-card-btn"
-                      onclick={handleOpenAgent}
-                      aria-label="Open AI Agent Companion"
-                    >
-                      <div class="card-icon agent-icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path>
-                          <rect x="4" y="8" width="16" height="12" rx="4"></rect>
-                          <circle cx="9" cy="14" r="1.5"></circle>
-                          <circle cx="15" cy="14" r="1.5"></circle>
-                        </svg>
-                      </div>
-                      <div class="card-text">
-                        <span class="card-title">
-                          {agent.state !== 'idle' ? `${agent.name}: ${agent.state.toUpperCase()}` : 'AI Agent Companion'}
-                        </span>
-                        <span class="card-subtitle">
-                          {agent.task ? `${agent.task} • ` : ''}{agent.message}
-                        </span>
-                      </div>
-                    </button>
-                  {/if}
-                {:else if modKey === 'build'}
-                  <!-- Terminal Build Monitor Row (shown when a build is active or recently completed) -->
-                  {#if settings.show_build_in_pill && build.state !== 'idle'}
-                    <div class="tool-row">
-                      <span class="tool-label">Build Status:</span>
-                      <div class="tool-actions">
-                        {#if build.state === 'running'}
-                          <button
-                            type="button"
-                            class="action-chip-btn active"
-                            onclick={() => islandState.clearBuild()}
-                            title="Running: {build.command} (Click to clear/dismiss)"
-                          >
-                            ⚡ {build.command}... ✕
-                          </button>
-                        {:else if build.state === 'success'}
-                          <button
-                            type="button"
-                            class="action-chip-btn chip-success"
-                            onclick={() => islandState.clearBuild()}
-                            title="Last build passed (Click to dismiss)"
-                          >
-                            ✓ {build.command ? build.command.split(' ')[0] : 'Build'} passed ✕
-                          </button>
-                        {:else if build.state === 'failed'}
-                          <button
-                            type="button"
-                            class="action-chip-btn chip-failed"
-                            onclick={() => islandState.clearBuild()}
-                            title="Last build failed (Click to dismiss)"
-                          >
-                            ✗ {build.command ? build.command.split(' ')[0] : 'Build'} failed ✕
-                          </button>
-                        {/if}
-                      </div>
-                    </div>
-                  {/if}
-                {:else if modKey === 'system'}
-                  <!-- System Performance Card -->
-                  {#if settings.show_system_in_pill}
-                    <button
-                      type="button"
-                      class="action-card-btn"
-                      onclick={handleOpenSystem}
-                      aria-label="Open System Performance Monitor"
-                    >
-                      <div class="card-icon system-icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <rect x="4" y="4" width="16" height="16" rx="2"></rect>
-                          <rect x="9" y="9" width="6" height="6"></rect>
-                          <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"></path>
-                        </svg>
-                      </div>
-                      <div class="card-text">
-                        <span class="card-title">System Performance</span>
-                        <span class="card-subtitle">
-                          {#if telemetry}
-                            CPU {telemetry.cpu_percent.toFixed(0)}% • RAM {telemetry.mem_percent.toFixed(0)}% • {telemetry.battery ? `${telemetry.battery.percent}% Bat` : 'AC Power'}
+                      <div class="tab-content">
+                        <span class="tab-title">Media Player</span>
+                        <span class="tab-sub">
+                          {#if islandState.hasActiveMedia && media}
+                            {media.title}
                           {:else}
-                            Inspect CPU, RAM, Battery, and Network
+                            MPRIS Audio
                           {/if}
                         </span>
                       </div>
+                      {#if islandState.isPlaying}
+                        <div class="mini-equalizer" aria-hidden="true">
+                          <span class="mini-bar"></span>
+                          <span class="mini-bar"></span>
+                          <span class="mini-bar"></span>
+                        </div>
+                      {/if}
                     </button>
-                  {/if}
-                {:else if modKey === 'git'}
-                  <!-- Git Repository Card -->
-                  {#if settings.show_git_in_pill}
+
+                  {:else if modKey === 'agent' && settings.show_agent_in_pill}
                     <button
                       type="button"
-                      class="action-card-btn"
-                      onclick={handleOpenGit}
-                      aria-label="Open Git Repository Details"
+                      class="nav-tab-btn"
+                      class:active={activePanelMode === 'agent'}
+                      onclick={handleOpenAgent}
                     >
-                      <div class="card-icon git-icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <div class="tab-icon agent-tab-icon">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+                          <circle cx="12" cy="5" r="2"></circle>
+                          <path d="M12 7v4"></path>
+                          <line x1="8" y1="16" x2="8" y2="16"></line>
+                          <line x1="16" y1="16" x2="16" y2="16"></line>
+                        </svg>
+                      </div>
+                      <div class="tab-content">
+                        <span class="tab-title">AI Agent</span>
+                        <span class="tab-sub">
+                          {#if agent.state === 'review'}
+                            <span class="tab-badge-review">Review Ready</span>
+                          {:else if agent.state === 'working'}
+                            Working...
+                          {:else if agent.state === 'thinking'}
+                            Thinking...
+                          {:else}
+                            Agent Companion
+                          {/if}
+                        </span>
+                      </div>
+                      <span class="sidebar-status-dot state-{agent.state}"></span>
+                    </button>
+
+                  {:else if modKey === 'git' && settings.show_git_in_pill}
+                    <button
+                      type="button"
+                      class="nav-tab-btn"
+                      class:active={activePanelMode === 'git'}
+                      onclick={handleOpenGit}
+                    >
+                      <div class="tab-icon git-tab-icon">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                           <line x1="6" y1="3" x2="6" y2="15"></line>
                           <circle cx="18" cy="6" r="3"></circle>
                           <circle cx="6" cy="18" r="3"></circle>
                           <path d="M18 9a9 9 0 0 1-9 9"></path>
                         </svg>
                       </div>
-                      <div class="card-text">
-                        <span class="card-title">
-                          {git.is_repo ? `${git.repo_name || 'Git'}: ⎇ ${git.branch || 'detached'}` : 'Git Repository'}
-                        </span>
-                        <span class="card-subtitle">
+                      <div class="tab-content">
+                        <span class="tab-title">Git Repository</span>
+                        <span class="tab-sub">
                           {#if git.is_repo}
-                            {#if islandState.gitDirtyCount > 0}
-                              {islandState.gitDirtyCount} changed files{#if git.ahead > 0} • ↑{git.ahead} unpushed{/if}
-                            {:else}
-                              Working tree clean{#if git.ahead > 0} • ↑{git.ahead} unpushed{:else} • Synced{/if}
-                            {/if}
+                            ⎇ {git.branch || 'git'} {islandState.gitDirtyCount > 0 ? `*${islandState.gitDirtyCount}` : '✓ clean'}
                           {:else}
-                            No active repository detected
+                            No active repo
                           {/if}
                         </span>
                       </div>
+                      {#if islandState.gitDirtyCount > 0}
+                        <span class="sidebar-badge git-dirty-badge">*{islandState.gitDirtyCount}</span>
+                      {/if}
                     </button>
-                  {/if}
-                {:else if modKey === 'editor'}
-                  <!-- Code Editor Presence Card -->
-                  {#if settings.show_editor_in_pill}
+
+                  {:else if modKey === 'editor' && settings.show_editor_in_pill}
                     <button
                       type="button"
-                      class="action-card-btn"
+                      class="nav-tab-btn"
+                      class:active={activePanelMode === 'editor'}
                       onclick={handleOpenEditor}
-                      aria-label="Open Code Editor Presence Details"
                     >
-                      <div class="card-icon editor-icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <div class="tab-icon editor-tab-icon">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                           <polyline points="16 18 22 12 16 6"></polyline>
                           <polyline points="8 6 2 12 8 18"></polyline>
                         </svg>
                       </div>
-                      <div class="card-text">
-                        <span class="card-title">
-                          {editor?.editor || 'Code Editor'}{#if editor?.file_name}: {editor.file_name}{/if}
-                        </span>
-                        <span class="card-subtitle">
+                      <div class="tab-content">
+                        <span class="tab-title">Code Editor</span>
+                        <span class="tab-sub">
                           {#if hasActiveEditor && editor}
-                            {editor.workspace || 'Active'} • {editor.state}{#if editor.line} • Ln {editor.line}{/if}
+                            {editor.file_name}
                           {:else}
-                            RPC Presence for Cursor & VS Code
+                            VS Code / Cursor
                           {/if}
                         </span>
                       </div>
                     </button>
-                  {/if}
-                {:else if modKey === 'ports'}
-                  <!-- Localhost & Ports Card -->
-                  {#if settings.show_ports_in_pill}
+
+                  {:else if modKey === 'ports' && settings.show_ports_in_pill}
                     <button
                       type="button"
-                      class="action-card-btn"
+                      class="nav-tab-btn"
+                      class:active={activePanelMode === 'ports'}
                       onclick={handleOpenPorts}
-                      aria-label="Open Localhost and Listening Ports Hub"
                     >
-                      <div class="card-icon ports-icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <div class="tab-icon ports-tab-icon">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                           <circle cx="12" cy="12" r="10"></circle>
                           <line x1="2" y1="12" x2="22" y2="12"></line>
                           <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
                         </svg>
                       </div>
-                      <div class="card-text">
-                        <span class="card-title">
-                          Localhost & Ports ({islandState.webPortsCount} Web Servers)
-                        </span>
-                        <span class="card-subtitle">
-                          {islandState.webPortsCount} web servers • {islandState.ports.length} total listening
-                        </span>
+                      <div class="tab-content">
+                        <span class="tab-title">Ports & Web</span>
+                        <span class="tab-sub">{islandState.webPortsCount} web servers</span>
                       </div>
+                      {#if islandState.webPortsCount > 0}
+                        <span class="sidebar-badge">{islandState.webPortsCount}</span>
+                      {/if}
                     </button>
-                  {/if}
-                {:else if modKey === 'docker'}
-                  <!-- Docker Containers Card -->
-                  {#if settings.show_docker_in_pill}
+
+                  {:else if modKey === 'docker' && settings.show_docker_in_pill}
                     <button
                       type="button"
-                      class="action-card-btn"
+                      class="nav-tab-btn"
+                      class:active={activePanelMode === 'docker'}
                       onclick={handleOpenDocker}
-                      aria-label="Open Docker Containers Hub"
                     >
-                      <div class="card-icon docker-icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <rect x="2" y="2" width="20" height="20" rx="4"></rect>
-                          <path d="M7 10h10M7 14h10"></path>
-                        </svg>
+                      <div class="tab-icon docker-tab-icon">🐳</div>
+                      <div class="tab-content">
+                        <span class="tab-title">Docker</span>
+                        <span class="tab-sub">{islandState.runningDockerCount} containers</span>
                       </div>
-                      <div class="card-text">
-                        <span class="card-title">
-                          Docker Hub ({islandState.runningDockerCount} Running)
-                        </span>
-                        <span class="card-subtitle">
-                          {islandState.runningDockerCount} active of {islandState.dockerContainers.length} containers
-                        </span>
-                      </div>
+                      {#if islandState.runningDockerCount > 0}
+                        <span class="sidebar-badge">{islandState.runningDockerCount}</span>
+                      {/if}
                     </button>
-                  {/if}
-                {:else if modKey === 'mic'}
-                  <!-- Hardware & Audio Controls Card -->
-                  {#if settings.show_mic_in_pill}
+
+                  {:else if modKey === 'mic' && settings.show_mic_in_pill}
                     <button
                       type="button"
-                      class="action-card-btn"
+                      class="nav-tab-btn"
+                      class:active={activePanelMode === 'hardware'}
                       onclick={handleOpenHardware}
-                      aria-label="Open Hardware and Audio Controls"
                     >
-                      <div class="card-icon hardware-icon" class:muted-mic={isMicMuted}>
-                        {#if isMicMuted}
-                          🎤
-                        {:else}
-                          🎧
-                        {/if}
-                      </div>
-                      <div class="card-text">
-                        <span class="card-title">
-                          Hardware & Audio ({isMicMuted ? 'Mic Muted' : 'Mic Active'})
-                        </span>
-                        <span class="card-subtitle">
-                          {islandState.audio?.active_output_name || 'Audio Output'} • Vol {islandState.audio?.output_volume ?? 100}%
-                        </span>
+                      <div class="tab-icon hardware-tab-icon">🎙️</div>
+                      <div class="tab-content">
+                        <span class="tab-title">Hardware Audio</span>
+                        <span class="tab-sub">{isMicMuted ? 'Muted' : 'Active'} • {islandState.activeOutputDeviceName}</span>
                       </div>
                     </button>
-                  {/if}
-                {:else if modKey === 'clipboard'}
-                  <!-- Clipboard History & Snippets Card -->
-                  {#if settings.show_clipboard_in_pill}
+
+                  {:else if modKey === 'clipboard' && settings.show_clipboard_in_pill}
                     <button
                       type="button"
-                      class="action-card-btn"
+                      class="nav-tab-btn"
+                      class:active={activePanelMode === 'clipboard'}
                       onclick={handleOpenClipboard}
-                      aria-label="Open Clipboard History and Snippets"
                     >
-                      <div class="card-icon clipboard-icon">
-                        📋
-                      </div>
-                      <div class="card-text">
-                        <span class="card-title">
-                          Clipboard & Snippets ({clipboardCount} items)
-                        </span>
-                        <span class="card-subtitle">
-                          {islandState.clipboard.snippets.length} pinned snippets • 1-click copy & paste
-                        </span>
+                      <div class="tab-icon clipboard-tab-icon">📋</div>
+                      <div class="tab-content">
+                        <span class="tab-title">Clipboard History</span>
+                        <span class="tab-sub">{clipboardCount} items</span>
                       </div>
                     </button>
-                  {/if}
-                {:else if modKey === 'shelf'}
-                  <!-- Desktop Drop Shelf Card -->
-                  {#if settings.show_shelf_in_pill}
+
+                  {:else if modKey === 'shelf' && settings.show_shelf_in_pill}
                     <button
                       type="button"
-                      class="action-card-btn"
+                      class="nav-tab-btn"
+                      class:active={activePanelMode === 'shelf'}
                       onclick={handleOpenShelf}
-                      aria-label="Open Desktop Drop Shelf"
                     >
-                      <div class="card-icon shelf-icon">
-                        📁
+                      <div class="tab-icon shelf-tab-icon">📁</div>
+                      <div class="tab-content">
+                        <span class="tab-title">Desktop Drop Shelf</span>
+                        <span class="tab-sub">{shelfCount} parked items</span>
                       </div>
-                      <div class="card-text">
-                        <span class="card-title">
-                          Desktop Drop Shelf ({shelfCount} Parked)
-                        </span>
-                        <span class="card-subtitle">
-                          Drag & drop files or screenshots to park while switching apps
-                        </span>
-                      </div>
+                      {#if shelfCount > 0}
+                        <span class="sidebar-badge shelf-badge">{shelfCount}</span>
+                      {/if}
                     </button>
                   {/if}
-                {/if}
-              {/each}
+                {/each}
 
-              <!-- Settings & Preferences Card -->
-              <button
-                type="button"
-                class="action-card-btn"
-                onclick={handleOpenSettings}
-                aria-label="Open Settings and Preferences"
-              >
-                <div class="card-icon settings-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                  </svg>
-                </div>
-                <div class="card-text">
-                  <span class="card-title">Settings & Preferences</span>
-                  <span class="card-subtitle">
-                    Hover: {settings.hover_expand_enabled ? `${settings.hover_delay_ms}ms` : 'Off'} • Margin: {settings.top_margin}px
-                  </span>
-                </div>
-              </button>
+                <!-- Always available System Monitor & Settings tabs -->
+                <div class="sidebar-section-divider"></div>
 
-              <!-- Multi-Monitor explicit selector (if > 1 screen detected) -->
-              {#if islandState.monitors.length > 1}
-                <div class="tool-row">
-                  <span class="tool-label">Switch Screen:</span>
-                  <div class="tool-actions">
-                    {#each islandState.monitors as mon}
-                      <button
-                        type="button"
-                        class="action-chip-btn"
-                        class:active={mon.is_current}
-                        onclick={(e) => handleSelectMonitor(e, mon.name)}
-                        title="{mon.name} ({mon.width}x{mon.height})"
-                      >
-                        {mon.name}
-                      </button>
-                    {/each}
+                <button
+                  type="button"
+                  class="nav-tab-btn"
+                  class:active={activePanelMode === 'system' || activePanelMode === 'expanded'}
+                  onclick={handleOpenSystem}
+                >
+                  <div class="tab-icon system-tab-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="2" y="2" width="20" height="8" rx="2"></rect>
+                      <rect x="2" y="14" width="20" height="8" rx="2"></rect>
+                      <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                      <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                    </svg>
+                  </div>
+                  <div class="tab-content">
+                    <span class="tab-title">System Monitor</span>
+                    <span class="tab-sub">CPU {telemetry?.cpu_percent.toFixed(0) || 0}% • RAM {telemetry?.mem_percent.toFixed(0) || 0}%</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  class="nav-tab-btn"
+                  class:active={activePanelMode === 'settings'}
+                  onclick={handleOpenSettings}
+                >
+                  <div class="tab-icon settings-tab-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="3"></circle>
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                  </div>
+                  <div class="tab-content">
+                    <span class="tab-title">Settings</span>
+                    <span class="tab-sub">Theme: {settings.theme || 'dark'}</span>
+                  </div>
+                </button>
+              </nav>
+
+              <!-- Sidebar Footer: Telemetry Mini-Spark -->
+              {#if telemetry}
+                <div class="sidebar-footer">
+                  <div class="footer-telemetry-row">
+                    <div class="telemetry-chip">
+                      <span class="chip-label">CPU</span>
+                      <span class="chip-val">{telemetry.cpu_percent.toFixed(0)}%</span>
+                    </div>
+                    <div class="telemetry-chip">
+                      <span class="chip-label">RAM</span>
+                      <span class="chip-val">{telemetry.mem_percent.toFixed(0)}%</span>
+                    </div>
+                    {#if telemetry.battery}
+                      <div class="telemetry-chip" class:low-battery={islandState.isBatteryLow}>
+                        <span class="chip-label">{telemetry.battery.is_charging ? '⚡' : '🔋'}</span>
+                        <span class="chip-val">{telemetry.battery.percent.toFixed(0)}%</span>
+                      </div>
+                    {/if}
                   </div>
                 </div>
               {/if}
-            </div>
+            </aside>
+
+            <!-- Right Detail Pane -->
+            <main class="dashboard-detail-pane">
+              {#if activePanelMode === 'media'}
+                <MediaPreview />
+              {:else if activePanelMode === 'agent'}
+                <AgentPreview />
+              {:else if activePanelMode === 'system' || activePanelMode === 'expanded'}
+                <SystemPreview />
+              {:else if activePanelMode === 'settings'}
+                <SettingsPreview />
+              {:else if activePanelMode === 'git'}
+                <GitPreview />
+              {:else if activePanelMode === 'editor'}
+                <EditorPreview />
+              {:else if activePanelMode === 'ports'}
+                <PortsPreview />
+              {:else if activePanelMode === 'docker'}
+                <DockerPreview />
+              {:else if activePanelMode === 'hardware'}
+                <HardwarePreview />
+              {:else if activePanelMode === 'clipboard'}
+                <ClipboardPreview />
+              {:else if activePanelMode === 'shelf'}
+                <DropShelfPreview />
+              {/if}
+            </main>
           </div>
-        </div>
-      {:else if activePanelMode === 'media'}
-        <div class="panel-content">
-          <MediaPreview />
-        </div>
-      {:else if activePanelMode === 'agent'}
-        <div class="panel-content">
-          <AgentPreview />
-        </div>
-      {:else if activePanelMode === 'system'}
-        <div class="panel-content">
-          <SystemPreview />
-        </div>
-      {:else if activePanelMode === 'settings'}
-        <div class="panel-content">
-          <SettingsPreview />
-        </div>
-      {:else if activePanelMode === 'git'}
-        <div class="panel-content">
-          <GitPreview />
-        </div>
-      {:else if activePanelMode === 'editor'}
-        <div class="panel-content">
-          <EditorPreview />
-        </div>
-      {:else if activePanelMode === 'ports'}
-        <div class="panel-content">
-          <PortsPreview />
-        </div>
-      {:else if activePanelMode === 'docker'}
-        <div class="panel-content">
-          <DockerPreview />
-        </div>
-      {:else if activePanelMode === 'hardware'}
-        <div class="panel-content">
-          <HardwarePreview />
-        </div>
-      {:else if activePanelMode === 'clipboard'}
-        <div class="panel-content">
-          <ClipboardPreview />
-        </div>
-      {:else if activePanelMode === 'shelf'}
-        <div class="panel-content">
-          <DropShelfPreview />
         </div>
       {/if}
     </div>
@@ -1022,7 +957,7 @@
     align-items: center;
     justify-content: space-between;
     box-sizing: border-box;
-    animation: pillFadeInNormal 0.20s cubic-bezier(0.32, 1.25, 0.32, 1) both;
+    opacity: 1;
   }
 
   .compact-pill-wrapper.is-collapsing {
@@ -1685,5 +1620,403 @@
     background: rgba(245, 158, 11, 0.3);
     color: #fde68a;
     font-weight: 700;
+  }
+
+  /* Dashboard Container & Topbar */
+  .dashboard-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--island-bg, #000000);
+    border-radius: inherit;
+  }
+
+  .dashboard-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 42px;
+    padding: 0 14px;
+    background: var(--island-surface, rgba(255, 255, 255, 0.04));
+    border-bottom: 1px solid var(--island-border, rgba(255, 255, 255, 0.1));
+    flex-shrink: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .topbar-logo {
+    font-size: 15px;
+    line-height: 1;
+  }
+
+  .topbar-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--island-text-primary, #ffffff);
+    margin-right: 4px;
+  }
+
+  .topbar-chip-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--island-border, rgba(255, 255, 255, 0.14));
+    border-radius: 6px;
+    padding: 2px 7px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--island-text-secondary, #9ca3af);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .topbar-chip-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--island-text-primary, #ffffff);
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+
+  .topbar-chip-btn.non-clickable {
+    cursor: default;
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .topbar-mic-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--island-border, rgba(255, 255, 255, 0.14));
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--island-text-secondary, #9ca3af);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .topbar-mic-badge:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--island-text-primary, #ffffff);
+  }
+
+  .topbar-mic-badge.muted {
+    background: rgba(239, 68, 68, 0.18);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+  }
+
+  .mic-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .mic-dot.active {
+    background: #10b981;
+    box-shadow: 0 0 5px rgba(16, 185, 129, 0.6);
+  }
+
+  .mic-dot.muted-pulse {
+    background: #ef4444;
+    box-shadow: 0 0 6px #ef4444;
+    animation: micPulse 1.6s infinite ease-in-out;
+  }
+
+  @keyframes micPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.85); }
+  }
+
+  .topbar-icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--island-text-secondary, #9ca3af);
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .topbar-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--island-text-primary, #ffffff);
+  }
+
+  /* Dashboard Body Layout */
+  .dashboard-body {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* Left Sidebar */
+  .dashboard-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--island-border, rgba(255, 255, 255, 0.1));
+    background: var(--island-surface, rgba(255, 255, 255, 0.02));
+    overflow: hidden;
+  }
+
+  .sidebar-nav {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 8px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+  }
+
+  .sidebar-nav::-webkit-scrollbar {
+    width: 3px;
+  }
+
+  .sidebar-nav::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+  }
+
+  .nav-tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    padding: 6px 9px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--island-text-secondary, #9ca3af);
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    position: relative;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .nav-tab-btn:hover {
+    background: var(--island-surface-hover, rgba(255, 255, 255, 0.06));
+    color: var(--island-text-primary, #ffffff);
+  }
+
+  .nav-tab-btn.active {
+    background: var(--island-surface-active, rgba(59, 130, 246, 0.15));
+    border-color: var(--island-border-active, rgba(59, 130, 246, 0.35));
+    color: var(--island-text-primary, #ffffff);
+    font-weight: 600;
+  }
+
+  .nav-tab-btn.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--island-accent, #3b82f6);
+  }
+
+  .tab-icon {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 13px;
+    color: var(--island-text-primary, #ffffff);
+  }
+
+  .tab-content {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .tab-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--island-text-primary, #ffffff);
+  }
+
+  .tab-sub {
+    font-size: 9.5px;
+    line-height: 1.2;
+    color: var(--island-text-muted, #6b7280);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
+  }
+
+  .tab-badge-review {
+    color: #f59e0b;
+    font-weight: 700;
+  }
+
+  .sidebar-section-divider {
+    height: 1px;
+    background: var(--island-border, rgba(255, 255, 255, 0.1));
+    margin: 5px 6px;
+    flex-shrink: 0;
+  }
+
+  .sidebar-badge {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    color: var(--island-text-primary, #ffffff);
+    flex-shrink: 0;
+  }
+
+  .git-dirty-badge {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+  }
+
+  .shelf-badge {
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+  }
+
+  .mini-equalizer {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 11px;
+    flex-shrink: 0;
+  }
+
+  .mini-bar {
+    width: 2px;
+    background: var(--island-accent, #3b82f6);
+    border-radius: 1px;
+    animation: eq-bounce 0.8s ease infinite alternate;
+  }
+
+  .mini-bar:nth-child(1) { height: 5px; animation-delay: 0.1s; }
+  .mini-bar:nth-child(2) { height: 11px; animation-delay: 0.3s; }
+  .mini-bar:nth-child(3) { height: 8px; animation-delay: 0.2s; }
+
+  @keyframes eq-bounce {
+    from { height: 3px; }
+    to { height: 11px; }
+  }
+
+  .sidebar-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .sidebar-status-dot.state-idle { background: #6b7280; }
+  .sidebar-status-dot.state-thinking { background: #3b82f6; box-shadow: 0 0 5px #3b82f6; }
+  .sidebar-status-dot.state-working { background: #10b981; box-shadow: 0 0 5px #10b981; }
+  .sidebar-status-dot.state-review { background: #f59e0b; box-shadow: 0 0 7px #f59e0b; animation: reviewPulse 1.2s infinite; }
+
+  /* Sidebar Footer */
+  .sidebar-footer {
+    padding: 7px 10px;
+    border-top: 1px solid var(--island-border, rgba(255, 255, 255, 0.1));
+    background: var(--island-surface, rgba(0, 0, 0, 0.2));
+    flex-shrink: 0;
+  }
+
+  .footer-telemetry-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .telemetry-chip {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--island-border, rgba(255, 255, 255, 0.1));
+    border-radius: 6px;
+    padding: 3px 2px;
+    font-size: 9.5px;
+  }
+
+  .telemetry-chip.low-battery {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+  }
+
+  .chip-label {
+    color: var(--island-text-muted, #6b7280);
+    font-size: 8.5px;
+    font-weight: 600;
+  }
+
+  .chip-val {
+    color: var(--island-text-primary, #ffffff);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Right Detail Pane */
+  .dashboard-detail-pane {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 14px 18px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  }
+
+  .dashboard-detail-pane::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .dashboard-detail-pane::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
   }
 </style>

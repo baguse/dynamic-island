@@ -49,30 +49,37 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   show_clipboard_in_pill: true,
   module_order: [...DEFAULT_MODULE_ORDER],
   watched_repo_path: null,
+  show_media_companion: true,
+  media_companion_path: null,
+  media_companion_style: 'vinyl',
   autostart_enabled: false,
 };
 
+export const DASHBOARD_WIDTH = 800;
+export const DASHBOARD_HEIGHT = 500;
+
 export const BASE_DIMENSIONS: Record<IslandMode, IslandDimensions> = {
-  idle: { width: 280, height: 52 },
-  expanded: { width: 400, height: 430 },
-  agent: { width: 400, height: 340 },
-  media: { width: 400, height: 280 },
-  notification: { width: 380, height: 96 },
-  system: { width: 400, height: 350 },
-  settings: { width: 400, height: 480 },
-  git: { width: 400, height: 380 },
-  editor: { width: 400, height: 320 },
-  ports: { width: 400, height: 400 },
-  docker: { width: 400, height: 420 },
-  hardware: { width: 400, height: 380 },
-  clipboard: { width: 400, height: 430 },
-  shelf: { width: 400, height: 380 },
+  idle: { width: 340, height: 52 },
+  expanded: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
+  agent: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
+  media: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
+  notification: { width: 420, height: 96 },
+  system: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
+  settings: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
+  git: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
+  editor: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
+  ports: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
+  docker: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
+  hardware: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
+  clipboard: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
+  shelf: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
 };
 
 class IslandStore {
   mode = $state<IslandMode>('idle');
   previousMode: IslandMode = 'idle';
   activePanel = $state<IslandMode | null>(null);
+  lastActiveDashboardModule = $state<ModuleKey>('media');
   isSyncing = $state<boolean>(false);
   isExpanding = $state<boolean>(false);
   isCollapsing = $state<boolean>(false);
@@ -227,6 +234,10 @@ class IslandStore {
     return this.monitors.find((m) => m.is_current)?.name || 'Default';
   }
 
+  get activeOutputDeviceName(): string {
+    return this.audio?.outputs?.find((o) => o.is_active)?.name || 'Audio Output';
+  }
+
   get isBatteryLow(): boolean {
     return !!(
       this.telemetry?.battery &&
@@ -280,53 +291,22 @@ class IslandStore {
       if (active === 'git') return 330;
       if (this.isMicMuted && this.settings.show_mic_in_pill) return 320;
       if (this.shelfCount > 0 && this.settings.show_shelf_in_pill) return 320;
-      return 280;
+      return 300;
     }
-    return BASE_DIMENSIONS[this.mode].width;
+    if (this.mode === 'notification') {
+      return 420;
+    }
+    return DASHBOARD_WIDTH;
   }
 
   get targetHeight(): number {
     if (this.mode === 'idle' || this.isCollapsing) {
       return 52;
     }
-    if (this.mode === 'expanded') {
-      let h = 395;
-      if (this.monitors.length > 1) h += 44;
-      if (this.build.state !== 'idle') h += 40;
-      return h;
+    if (this.mode === 'notification') {
+      return 96;
     }
-    if (this.mode === 'agent') {
-      if (this.agent.state === 'review' || (this.agent.changed_files && this.agent.changed_files.length > 0)) {
-        return 340;
-      }
-      return 260;
-    }
-    if (this.mode === 'git') {
-      let h = 330;
-      if (this.git.changed_files.length > 0) {
-        h += Math.min(this.git.changed_files.length * 26, 110);
-      }
-      return h;
-    }
-    if (this.mode === 'editor') {
-      return 320;
-    }
-    if (this.mode === 'ports') {
-      return 400;
-    }
-    if (this.mode === 'docker') {
-      return 420;
-    }
-    if (this.mode === 'hardware') {
-      return 380;
-    }
-    if (this.mode === 'clipboard') {
-      return 430;
-    }
-    if (this.mode === 'shelf') {
-      return 380;
-    }
-    return BASE_DIMENSIONS[this.mode].height;
+    return DASHBOARD_HEIGHT;
   }
 
   async setMode(newMode: IslandMode) {
@@ -337,18 +317,23 @@ class IslandStore {
       return;
     }
 
+    if (newMode !== 'notification') {
+      this.lastActiveDashboardModule = (newMode === 'expanded' ? 'system' : newMode) as ModuleKey;
+    }
+
     if (this.mode === 'idle') {
       await this.expandToMode(newMode);
       return;
     }
 
-    // Switching between open panel modes (e.g. overview -> agent)
+    // Switching between open dashboard modules (e.g. media -> agent)
     this.previousMode = this.mode;
     this.mode = newMode;
     this.activePanel = newMode;
     this.resetInactivityTimer();
+    const neededWidth = this.targetWidth;
     const neededHeight = this.targetHeight;
-    await this.syncNativeWindow(400, neededHeight + 14);
+    await this.syncNativeWindow(neededWidth, neededHeight + 14);
   }
 
   async expandToMode(targetMode: IslandMode) {
@@ -364,14 +349,18 @@ class IslandStore {
     this.previousMode = this.mode;
     this.mode = targetMode;
     this.activePanel = targetMode;
+    if (targetMode !== 'notification') {
+      this.lastActiveDashboardModule = (targetMode === 'expanded' ? 'system' : targetMode) as ModuleKey;
+    }
     this.isExpanding = true;
     this.isCollapsing = false;
     this.isHovered = this.isCursorOverSurface;
     this.resetInactivityTimer();
 
-    // 1. Immediately expand the native window height so canvas is ready
+    // 1. Immediately expand the native window height and width so canvas is ready
+    const neededWidth = this.targetWidth;
     const neededHeight = this.targetHeight;
-    await this.syncNativeWindow(400, neededHeight + 14);
+    await this.syncNativeWindow(neededWidth, neededHeight + 14);
 
     if (this.expandAnimationTimer) clearTimeout(this.expandAnimationTimer);
     this.expandAnimationTimer = setTimeout(() => {
@@ -381,16 +370,23 @@ class IslandStore {
   }
 
   async expand() {
-    const targetMode: IslandMode = this.hasActiveAgent
-      ? 'agent'
-      : this.hasActiveMedia
-      ? 'media'
-      : 'expanded';
+    let targetMode: IslandMode;
+    if (this.hasActiveAgent) {
+      targetMode = 'agent';
+    } else if (this.hasActiveMedia) {
+      targetMode = 'media';
+    } else if (this.hasActiveBuild) {
+      targetMode = 'agent';
+    } else if (this.lastActiveDashboardModule && this.lastActiveDashboardModule !== 'build') {
+      targetMode = this.lastActiveDashboardModule as IslandMode;
+    } else {
+      targetMode = 'media';
+    }
     await this.expandToMode(targetMode);
   }
 
   async openEditor() {
-    await this.expandToMode('editor');
+    await this.setMode('editor');
   }
 
   async updateAgentStatus(status: Partial<AgentStatus>) {

@@ -30,6 +30,10 @@ fn default_horizontal_position() -> String {
     "center".to_string()
 }
 
+fn default_companion_style() -> String {
+    "vinyl".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IslandSettings {
     #[serde(default = "default_theme")]
@@ -66,6 +70,12 @@ pub struct IslandSettings {
     pub module_order: Vec<String>,
     #[serde(default)]
     pub watched_repo_path: Option<String>,
+    #[serde(default = "default_true")]
+    pub show_media_companion: bool,
+    #[serde(default)]
+    pub media_companion_path: Option<String>,
+    #[serde(default = "default_companion_style")]
+    pub media_companion_style: String,
     pub autostart_enabled: bool,
 }
 
@@ -94,6 +104,9 @@ impl Default for IslandSettings {
             show_clipboard_in_pill: true,
             module_order: default_module_order(),
             watched_repo_path: None,
+            show_media_companion: true,
+            media_companion_path: None,
+            media_companion_style: "vinyl".to_string(),
             autostart_enabled: false,
         }
     }
@@ -216,6 +229,8 @@ mod tests {
         assert!(s.show_docker_in_pill);
         assert_eq!(s.module_order.len(), 11);
         assert_eq!(s.module_order[0], "media");
+        assert!(s.show_media_companion);
+        assert_eq!(s.media_companion_style, "vinyl");
     }
 
     #[test]
@@ -224,6 +239,8 @@ mod tests {
         let s: IslandSettings = serde_json::from_str(json).unwrap();
         assert_eq!(s.module_order.len(), 11);
         assert_eq!(s.module_order[0], "media");
+        assert!(s.show_media_companion);
+        assert_eq!(s.media_companion_style, "vinyl");
     }
 
     #[test]

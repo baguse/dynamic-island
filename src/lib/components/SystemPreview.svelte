@@ -32,11 +32,6 @@
       isRefreshing = false;
     }, 400);
   }
-
-  function handleBack(e: MouseEvent) {
-    e.stopPropagation();
-    islandState.openOverview();
-  }
 </script>
 
 <div class="system-container">
@@ -181,9 +176,6 @@
 
   <!-- Bottom Navigation Row -->
   <div class="system-bottom-bar">
-    <button type="button" class="back-btn" onclick={handleBack}>
-      ← Back to Overview
-    </button>
     <button
       type="button"
       class="refresh-btn"

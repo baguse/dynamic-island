@@ -5,7 +5,9 @@
 
   $effect(() => {
     const theme = islandState.settings.theme || 'dark';
-    document.documentElement.setAttribute('data-theme', theme);
+    if (document.documentElement.getAttribute('data-theme') !== theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
   });
 
   onMount(() => {

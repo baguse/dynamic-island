@@ -19,6 +19,26 @@
     shelf: { label: 'Desktop Drop Shelf', icon: '📁', settingKey: 'show_shelf_in_pill' },
   };
 
+  interface ThemeDef {
+    id: IslandTheme;
+    name: string;
+    swatchClass: string;
+    title: string;
+  }
+
+  const THEME_OPTIONS: ThemeDef[] = [
+    { id: 'dark', name: 'Dark', swatchClass: 'dark-swatch', title: 'Deep pitch black OLED with emerald & white' },
+    { id: 'light', name: 'Light', swatchClass: 'light-swatch', title: 'Frosted clean acrylic with sapphire blue' },
+    { id: 'catppuccin', name: 'Mocha', swatchClass: 'catppuccin-swatch', title: 'Catppuccin Mocha pastel dark palette with mauve & teal' },
+    { id: 'nord', name: 'Nord', swatchClass: 'nord-swatch', title: 'Nord arctic cold blue with frost cyan & aurora' },
+    { id: 'dracula', name: 'Dracula', swatchClass: 'dracula-swatch', title: 'Iconic vampire palette with vibrant purple & pink' },
+    { id: 'tokyo-night', name: 'Tokyo', swatchClass: 'tokyo-swatch', title: 'Tokyo Night deep indigo with neon blue & lavender' },
+    { id: 'gruvbox', name: 'Gruvbox', swatchClass: 'gruvbox-swatch', title: 'Warm retro groove palette with amber orange & cream' },
+    { id: 'neon', name: 'Neon', swatchClass: 'neon-swatch', title: 'Cyberpunk synthwave glowing cyan & hot pink' },
+    { id: 'matrix', name: 'Matrix', swatchClass: 'matrix-swatch', title: 'Terminal CRT phosphor green on pitch black' },
+    { id: 'anime', name: 'Sakura', swatchClass: 'anime-swatch', title: 'Kawaii sakura blossom pink & soft violet' },
+  ];
+
   let listContainer = $state<HTMLElement | null>(null);
   let draggedIndex = $state<number | null>(null);
   let dragOverIndex = $state<number | null>(null);
@@ -214,11 +234,6 @@
   function handleReset() {
     islandState.resetSettings();
   }
-
-  function handleBack(e: MouseEvent) {
-    e.stopPropagation();
-    islandState.openOverview();
-  }
 </script>
 
 <div class="settings-wrapper">
@@ -233,65 +248,22 @@
       </div>
 
       <div class="theme-grid">
-        <button
-          type="button"
-          class="theme-card"
-          class:active={settings.theme === 'dark'}
-          onclick={() => handleThemeChange('dark')}
-          aria-label="Select Dark OLED Theme"
-          title="Dark OLED Theme"
-        >
-          <div class="theme-swatch dark-swatch">
-            <span class="swatch-dot"></span>
-            <span class="swatch-bar"></span>
-          </div>
-          <span class="theme-name">Dark</span>
-        </button>
-
-        <button
-          type="button"
-          class="theme-card"
-          class:active={settings.theme === 'light'}
-          onclick={() => handleThemeChange('light')}
-          aria-label="Select Light Acrylic Theme"
-          title="Light Acrylic Theme"
-        >
-          <div class="theme-swatch light-swatch">
-            <span class="swatch-dot"></span>
-            <span class="swatch-bar"></span>
-          </div>
-          <span class="theme-name">Light</span>
-        </button>
-
-        <button
-          type="button"
-          class="theme-card"
-          class:active={settings.theme === 'neon'}
-          onclick={() => handleThemeChange('neon')}
-          aria-label="Select Neon Cyberpunk Theme"
-          title="Neon Cyberpunk Theme"
-        >
-          <div class="theme-swatch neon-swatch">
-            <span class="swatch-dot"></span>
-            <span class="swatch-bar"></span>
-          </div>
-          <span class="theme-name">Neon</span>
-        </button>
-
-        <button
-          type="button"
-          class="theme-card"
-          class:active={settings.theme === 'anime'}
-          onclick={() => handleThemeChange('anime')}
-          aria-label="Select Anime Sakura Theme"
-          title="Anime Sakura Theme"
-        >
-          <div class="theme-swatch anime-swatch">
-            <span class="swatch-dot"></span>
-            <span class="swatch-bar"></span>
-          </div>
-          <span class="theme-name">Anime</span>
-        </button>
+        {#each THEME_OPTIONS as t (t.id)}
+          <button
+            type="button"
+            class="theme-card"
+            class:active={settings.theme === t.id}
+            onclick={() => handleThemeChange(t.id)}
+            aria-label="Select {t.name} Theme"
+            title={t.title}
+          >
+            <div class="theme-swatch {t.swatchClass}">
+              <span class="swatch-dot"></span>
+              <span class="swatch-bar"></span>
+            </div>
+            <span class="theme-name">{t.name}</span>
+          </button>
+        {/each}
       </div>
     </div>
 
@@ -588,6 +560,64 @@
       </div>
     </div>
 
+    <!-- Section: Media Visual Companion -->
+    <div class="settings-group">
+      <div class="group-header">
+        <div class="group-title-col">
+          <span class="group-title">Media Visual Companion</span>
+          <span class="group-desc">Video/GIF player or spinning vinyl/cassette in Media tab</span>
+        </div>
+        <span class="active-theme-tag">
+          {settings.media_companion_style ? settings.media_companion_style.toUpperCase() : 'VINYL'}
+        </span>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-name">Enable Media Companion Player</span>
+          <span class="setting-desc">Fills the bottom space with custom media or vinyl/cassette turntable</span>
+        </div>
+        <button
+          type="button"
+          class="toggle-switch"
+          class:checked={settings.show_media_companion}
+          onclick={() => islandState.updateSettings({ show_media_companion: !settings.show_media_companion })}
+          aria-label="Toggle media companion"
+        >
+          <span class="toggle-thumb"></span>
+        </button>
+      </div>
+
+      {#if settings.show_media_companion}
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-name">Default Visualizer Style</span>
+            <span class="setting-desc">Shown when no custom video or image is loaded</span>
+          </div>
+          <div class="position-segmented" style="max-width: 200px;">
+            <button
+              type="button"
+              class="position-btn"
+              class:active={settings.media_companion_style === 'vinyl'}
+              onclick={() => islandState.updateSettings({ media_companion_style: 'vinyl' })}
+            >
+              <span class="pos-icon">💿</span>
+              <span class="pos-label">Vinyl</span>
+            </button>
+            <button
+              type="button"
+              class="position-btn"
+              class:active={settings.media_companion_style === 'cassette'}
+              onclick={() => islandState.updateSettings({ media_companion_style: 'cassette' })}
+            >
+              <span class="pos-icon">📼</span>
+              <span class="pos-label">Cassette</span>
+            </button>
+          </div>
+        </div>
+      {/if}
+    </div>
+
     <!-- Section 4: System Integration -->
     <div class="settings-group">
       <span class="group-title">System Integration</span>
@@ -612,9 +642,6 @@
 
   <!-- Bottom Action Bar -->
   <div class="settings-bottom-bar">
-    <button type="button" class="back-link" onclick={handleBack}>
-      ← Back to Overview
-    </button>
     <button type="button" class="reset-btn" onclick={handleReset}>
       Reset to Defaults
     </button>
@@ -685,8 +712,8 @@
 
   .theme-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
     margin-top: 4px;
   }
 
@@ -694,13 +721,14 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    padding: 8px 6px;
-    border-radius: 10px;
+    gap: 4px;
+    padding: 6px 4px;
+    border-radius: 8px;
     background: var(--island-card-bg, rgba(255, 255, 255, 0.04));
     border: 1.5px solid var(--island-card-border, rgba(255, 255, 255, 0.08));
     cursor: pointer;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    min-width: 0;
   }
 
   .theme-card:hover {
@@ -717,27 +745,27 @@
 
   .theme-swatch {
     width: 100%;
-    height: 28px;
-    border-radius: 6px;
+    height: 22px;
+    border-radius: 5px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding: 0 8px;
+    gap: 4px;
+    padding: 0 4px;
     box-sizing: border-box;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
   }
 
   .swatch-dot {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     flex-shrink: 0;
   }
 
   .swatch-bar {
-    width: 24px;
-    height: 4px;
+    width: 18px;
+    height: 3.5px;
     border-radius: 2px;
     flex-shrink: 0;
   }
@@ -796,10 +824,90 @@
     box-shadow: 0 0 4px #c084fc;
   }
 
+  /* Catppuccin Swatch */
+  .catppuccin-swatch {
+    background: #181825;
+    border: 1px solid rgba(203, 166, 247, 0.45);
+  }
+  .catppuccin-swatch .swatch-dot {
+    background: #a6e3a1;
+  }
+  .catppuccin-swatch .swatch-bar {
+    background: #cba6f7;
+  }
+
+  /* Nord Swatch */
+  .nord-swatch {
+    background: #242933;
+    border: 1px solid rgba(136, 192, 208, 0.45);
+  }
+  .nord-swatch .swatch-dot {
+    background: #88c0d0;
+  }
+  .nord-swatch .swatch-bar {
+    background: #81a1c1;
+  }
+
+  /* Dracula Swatch */
+  .dracula-swatch {
+    background: #1e1f29;
+    border: 1px solid rgba(189, 147, 249, 0.45);
+  }
+  .dracula-swatch .swatch-dot {
+    background: #50fa7b;
+  }
+  .dracula-swatch .swatch-bar {
+    background: #bd93f9;
+  }
+
+  /* Tokyo Night Swatch */
+  .tokyo-swatch {
+    background: #16161e;
+    border: 1px solid rgba(122, 162, 247, 0.45);
+  }
+  .tokyo-swatch .swatch-dot {
+    background: #7aa2f7;
+  }
+  .tokyo-swatch .swatch-bar {
+    background: #bb9af7;
+  }
+
+  /* Gruvbox Swatch */
+  .gruvbox-swatch {
+    background: #1d2021;
+    border: 1px solid rgba(254, 128, 25, 0.45);
+  }
+  .gruvbox-swatch .swatch-dot {
+    background: #fe8019;
+  }
+  .gruvbox-swatch .swatch-bar {
+    background: #ebdbb2;
+  }
+
+  /* Matrix Swatch */
+  .matrix-swatch {
+    background: #040804;
+    border: 1.5px solid #00ff41;
+    box-shadow: 0 0 6px rgba(0, 255, 65, 0.4);
+  }
+  .matrix-swatch .swatch-dot {
+    background: #00ff41;
+    box-shadow: 0 0 3px #00ff41;
+  }
+  .matrix-swatch .swatch-bar {
+    background: #55ff77;
+    box-shadow: 0 0 3px #55ff77;
+  }
+
   .theme-name {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     color: var(--island-text-primary, #ffffff);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    text-align: center;
   }
 
   .group-title {

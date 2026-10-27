@@ -122,7 +122,17 @@ export interface GitStatus {
   recent_commits: GitCommitInfo[];
 }
 
-export type IslandTheme = 'dark' | 'light' | 'neon' | 'anime';
+export type IslandTheme =
+  | 'dark'
+  | 'light'
+  | 'neon'
+  | 'anime'
+  | 'catppuccin'
+  | 'nord'
+  | 'dracula'
+  | 'tokyo-night'
+  | 'gruvbox'
+  | 'matrix';
 export type HorizontalPosition = 'center' | 'left' | 'right' | 'custom';
 
 export const DEFAULT_MODULE_ORDER = [
@@ -164,6 +174,9 @@ export interface IslandSettings {
   show_clipboard_in_pill: boolean;
   module_order: string[];
   watched_repo_path?: string | null;
+  show_media_companion: boolean;
+  media_companion_path?: string | null;
+  media_companion_style?: 'vinyl' | 'cassette';
   autostart_enabled: boolean;
 }
 

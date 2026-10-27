@@ -1,8 +1,10 @@
 <script lang="ts">
   import IslandHeader from './IslandHeader.svelte';
+  import MediaCompanion from './MediaCompanion.svelte';
   import { islandState } from '../state/island.svelte';
 
   const media = $derived(islandState.currentMedia);
+  const showCompanion = $derived(islandState.settings.show_media_companion ?? true);
 
   function formatTime(ms: number | null | undefined): string {
     if (!ms || ms <= 0) return '0:00';
@@ -41,7 +43,17 @@
 </script>
 
 <div class="media-preview-wrapper">
-  <IslandHeader title={media?.player_name ? `${media.player_name}` : 'Now Playing'} />
+  <IslandHeader title={media?.player_name ? `${media.player_name}` : 'Now Playing'}>
+    <button
+      type="button"
+      class="companion-toggle-btn"
+      class:active={showCompanion}
+      onclick={() => islandState.updateSettings({ show_media_companion: !showCompanion })}
+      title={showCompanion ? 'Hide Visual Companion' : 'Show Visual Companion'}
+    >
+      {showCompanion ? 'Visualizer: ON' : 'Visualizer: OFF'}
+    </button>
+  </IslandHeader>
 
   {#if media}
     <div class="track-row">
@@ -148,18 +160,47 @@
       <p class="empty-desc">
         Start playback in Spotify, VLC, or a browser to control it from the Island.
       </p>
-      <button
-        type="button"
-        class="btn-back-overview"
-        onclick={handleBack}
-      >
-        Back to Overview
-      </button>
+      {#if !showCompanion}
+        <button
+          type="button"
+          class="btn-back-overview"
+          onclick={handleBack}
+        >
+          Back to Overview
+        </button>
+      {/if}
     </div>
+  {/if}
+
+  {#if showCompanion}
+    <MediaCompanion />
   {/if}
 </div>
 
 <style>
+  .companion-toggle-btn {
+    height: 22px;
+    padding: 0 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--island-text-secondary, #9ca3af);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .companion-toggle-btn.active {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(59, 130, 246, 0.4);
+    color: #93c5fd;
+  }
+
+  .companion-toggle-btn:hover {
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.25);
+  }
   .media-preview-wrapper {
     width: 100%;
     display: flex;

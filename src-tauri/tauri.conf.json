@@ -14,8 +14,8 @@
       {
         "title": "Dynamic Island",
         "label": "main",
-        "width": 400,
-        "height": 52,
+        "width": 800,
+        "height": 520,
         "resizable": true,
         "fullscreen": false,
         "decorations": false,
@@ -27,7 +27,11 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
     }
   },
   "bundle": {
