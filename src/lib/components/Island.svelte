@@ -477,56 +477,60 @@
 
             <div class="action-grid">
               <!-- Media Quick Card -->
-              <button
-                type="button"
-                class="action-card-btn"
-                onclick={handleOpenMedia}
-                aria-label="Open Media Player"
-              >
-                <div class="card-icon media-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M9 18V5l12-2v13"></path>
-                    <circle cx="6" cy="18" r="3"></circle>
-                    <circle cx="18" cy="16" r="3"></circle>
-                  </svg>
-                </div>
-                <div class="card-text">
-                  <span class="card-title">
-                    {islandState.hasActiveMedia && media ? `Now Playing: ${media.title}` : 'Media Player (MPRIS)'}
-                  </span>
-                  <span class="card-subtitle">
-                    {islandState.hasActiveMedia && media ? `${media.artist} • ${media.player_name}` : 'Control Spotify, VLC, browser playback'}
-                  </span>
-                </div>
-              </button>
+              {#if settings.show_media_in_pill}
+                <button
+                  type="button"
+                  class="action-card-btn"
+                  onclick={handleOpenMedia}
+                  aria-label="Open Media Player"
+                >
+                  <div class="card-icon media-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M9 18V5l12-2v13"></path>
+                      <circle cx="6" cy="18" r="3"></circle>
+                      <circle cx="18" cy="16" r="3"></circle>
+                    </svg>
+                  </div>
+                  <div class="card-text">
+                    <span class="card-title">
+                      {islandState.hasActiveMedia && media ? `Now Playing: ${media.title}` : 'Media Player (MPRIS)'}
+                    </span>
+                    <span class="card-subtitle">
+                      {islandState.hasActiveMedia && media ? `${media.artist} • ${media.player_name}` : 'Control Spotify, VLC, browser playback'}
+                    </span>
+                  </div>
+                </button>
+              {/if}
 
               <!-- AI Agent Card -->
-              <button
-                type="button"
-                class="action-card-btn"
-                onclick={handleOpenAgent}
-                aria-label="Open AI Agent Companion"
-              >
-                <div class="card-icon agent-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path>
-                    <rect x="4" y="8" width="16" height="12" rx="4"></rect>
-                    <circle cx="9" cy="14" r="1.5"></circle>
-                    <circle cx="15" cy="14" r="1.5"></circle>
-                  </svg>
-                </div>
-                <div class="card-text">
-                  <span class="card-title">
-                    {agent.state !== 'idle' ? `${agent.name}: ${agent.state.toUpperCase()}` : 'AI Agent Companion'}
-                  </span>
-                  <span class="card-subtitle">
-                    {agent.task ? `${agent.task} • ` : ''}{agent.message}
-                  </span>
-                </div>
-              </button>
+              {#if settings.show_agent_in_pill}
+                <button
+                  type="button"
+                  class="action-card-btn"
+                  onclick={handleOpenAgent}
+                  aria-label="Open AI Agent Companion"
+                >
+                  <div class="card-icon agent-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path>
+                      <rect x="4" y="8" width="16" height="12" rx="4"></rect>
+                      <circle cx="9" cy="14" r="1.5"></circle>
+                      <circle cx="15" cy="14" r="1.5"></circle>
+                    </svg>
+                  </div>
+                  <div class="card-text">
+                    <span class="card-title">
+                      {agent.state !== 'idle' ? `${agent.name}: ${agent.state.toUpperCase()}` : 'AI Agent Companion'}
+                    </span>
+                    <span class="card-subtitle">
+                      {agent.task ? `${agent.task} • ` : ''}{agent.message}
+                    </span>
+                  </div>
+                </button>
+              {/if}
 
               <!-- Terminal Build Monitor Row (shown when a build is active or recently completed) -->
-              {#if build.state !== 'idle'}
+              {#if settings.show_build_in_pill && build.state !== 'idle'}
                 <div class="tool-row">
                   <span class="tool-label">Build Status:</span>
                   <div class="tool-actions">
@@ -563,90 +567,96 @@
               {/if}
 
               <!-- System Performance Card -->
-              <button
-                type="button"
-                class="action-card-btn"
-                onclick={handleOpenSystem}
-                aria-label="Open System Performance Monitor"
-              >
-                <div class="card-icon system-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="4" y="4" width="16" height="16" rx="2"></rect>
-                    <rect x="9" y="9" width="6" height="6"></rect>
-                    <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"></path>
-                  </svg>
-                </div>
-                <div class="card-text">
-                  <span class="card-title">System Performance</span>
-                  <span class="card-subtitle">
-                    {#if telemetry}
-                      CPU {telemetry.cpu_percent.toFixed(0)}% • RAM {telemetry.mem_percent.toFixed(0)}% • {telemetry.battery ? `${telemetry.battery.percent}% Bat` : 'AC Power'}
-                    {:else}
-                      Inspect CPU, RAM, Battery, and Network
-                    {/if}
-                  </span>
-                </div>
-              </button>
+              {#if settings.show_system_in_pill}
+                <button
+                  type="button"
+                  class="action-card-btn"
+                  onclick={handleOpenSystem}
+                  aria-label="Open System Performance Monitor"
+                >
+                  <div class="card-icon system-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+                      <rect x="9" y="9" width="6" height="6"></rect>
+                      <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"></path>
+                    </svg>
+                  </div>
+                  <div class="card-text">
+                    <span class="card-title">System Performance</span>
+                    <span class="card-subtitle">
+                      {#if telemetry}
+                        CPU {telemetry.cpu_percent.toFixed(0)}% • RAM {telemetry.mem_percent.toFixed(0)}% • {telemetry.battery ? `${telemetry.battery.percent}% Bat` : 'AC Power'}
+                      {:else}
+                        Inspect CPU, RAM, Battery, and Network
+                      {/if}
+                    </span>
+                  </div>
+                </button>
+              {/if}
 
               <!-- Git Repository Card -->
-              <button
-                type="button"
-                class="action-card-btn"
-                onclick={handleOpenGit}
-                aria-label="Open Git Repository Details"
-              >
-                <div class="card-icon git-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="6" y1="3" x2="6" y2="15"></line>
-                    <circle cx="18" cy="6" r="3"></circle>
-                    <circle cx="6" cy="18" r="3"></circle>
-                    <path d="M18 9a9 9 0 0 1-9 9"></path>
-                  </svg>
-                </div>
-                <div class="card-text">
-                  <span class="card-title">
-                    {git.is_repo ? `${git.repo_name || 'Git'}: ⎇ ${git.branch || 'detached'}` : 'Git Repository'}
-                  </span>
-                  <span class="card-subtitle">
-                    {#if git.is_repo}
-                      {#if islandState.gitDirtyCount > 0}
-                        {islandState.gitDirtyCount} changed files{#if git.ahead > 0} • ↑{git.ahead} unpushed{/if}
+              {#if settings.show_git_in_pill}
+                <button
+                  type="button"
+                  class="action-card-btn"
+                  onclick={handleOpenGit}
+                  aria-label="Open Git Repository Details"
+                >
+                  <div class="card-icon git-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="6" y1="3" x2="6" y2="15"></line>
+                      <circle cx="18" cy="6" r="3"></circle>
+                      <circle cx="6" cy="18" r="3"></circle>
+                      <path d="M18 9a9 9 0 0 1-9 9"></path>
+                    </svg>
+                  </div>
+                  <div class="card-text">
+                    <span class="card-title">
+                      {git.is_repo ? `${git.repo_name || 'Git'}: ⎇ ${git.branch || 'detached'}` : 'Git Repository'}
+                    </span>
+                    <span class="card-subtitle">
+                      {#if git.is_repo}
+                        {#if islandState.gitDirtyCount > 0}
+                          {islandState.gitDirtyCount} changed files{#if git.ahead > 0} • ↑{git.ahead} unpushed{/if}
+                        {:else}
+                          Working tree clean{#if git.ahead > 0} • ↑{git.ahead} unpushed{:else} • Synced{/if}
+                        {/if}
                       {:else}
-                        Working tree clean{#if git.ahead > 0} • ↑{git.ahead} unpushed{:else} • Synced{/if}
+                        No active repository detected
                       {/if}
-                    {:else}
-                      No active repository detected
-                    {/if}
-                  </span>
-                </div>
-              </button>
+                    </span>
+                  </div>
+                </button>
+              {/if}
 
               <!-- Code Editor Presence Card -->
-              <button
-                type="button"
-                class="action-card-btn"
-                onclick={handleOpenEditor}
-                aria-label="Open Code Editor Presence Details"
-              >
-                <div class="card-icon editor-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="16 18 22 12 16 6"></polyline>
-                    <polyline points="8 6 2 12 8 18"></polyline>
-                  </svg>
-                </div>
-                <div class="card-text">
-                  <span class="card-title">
-                    {editor?.editor || 'Code Editor'}{#if editor?.file_name}: {editor.file_name}{/if}
-                  </span>
-                  <span class="card-subtitle">
-                    {#if hasActiveEditor && editor}
-                      {editor.workspace || 'Active'} • {editor.state}{#if editor.line} • Ln {editor.line}{/if}
-                    {:else}
-                      RPC Presence for Cursor & VS Code
-                    {/if}
-                  </span>
-                </div>
-              </button>
+              {#if settings.show_editor_in_pill}
+                <button
+                  type="button"
+                  class="action-card-btn"
+                  onclick={handleOpenEditor}
+                  aria-label="Open Code Editor Presence Details"
+                >
+                  <div class="card-icon editor-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="16 18 22 12 16 6"></polyline>
+                      <polyline points="8 6 2 12 8 18"></polyline>
+                    </svg>
+                  </div>
+                  <div class="card-text">
+                    <span class="card-title">
+                      {editor?.editor || 'Code Editor'}{#if editor?.file_name}: {editor.file_name}{/if}
+                    </span>
+                    <span class="card-subtitle">
+                      {#if hasActiveEditor && editor}
+                        {editor.workspace || 'Active'} • {editor.state}{#if editor.line} • Ln {editor.line}{/if}
+                      {:else}
+                        RPC Presence for Cursor & VS Code
+                      {/if}
+                    </span>
+                  </div>
+                </button>
+              {/if}
 
               <!-- Localhost & Ports Card -->
               {#if settings.show_ports_in_pill}
@@ -700,68 +710,74 @@
               {/if}
 
               <!-- Hardware & Audio Controls Card -->
-              <button
-                type="button"
-                class="action-card-btn"
-                onclick={handleOpenHardware}
-                aria-label="Open Hardware and Audio Controls"
-              >
-                <div class="card-icon hardware-icon" class:muted-mic={isMicMuted}>
-                  {#if isMicMuted}
-                    🎤
-                  {:else}
-                    🎧
-                  {/if}
-                </div>
-                <div class="card-text">
-                  <span class="card-title">
-                    Hardware & Audio ({isMicMuted ? 'Mic Muted' : 'Mic Active'})
-                  </span>
-                  <span class="card-subtitle">
-                    {islandState.audio?.active_output_name || 'Audio Output'} • Vol {islandState.audio?.output_volume ?? 100}%
-                  </span>
-                </div>
-              </button>
+              {#if settings.show_mic_in_pill}
+                <button
+                  type="button"
+                  class="action-card-btn"
+                  onclick={handleOpenHardware}
+                  aria-label="Open Hardware and Audio Controls"
+                >
+                  <div class="card-icon hardware-icon" class:muted-mic={isMicMuted}>
+                    {#if isMicMuted}
+                      🎤
+                    {:else}
+                      🎧
+                    {/if}
+                  </div>
+                  <div class="card-text">
+                    <span class="card-title">
+                      Hardware & Audio ({isMicMuted ? 'Mic Muted' : 'Mic Active'})
+                    </span>
+                    <span class="card-subtitle">
+                      {islandState.audio?.active_output_name || 'Audio Output'} • Vol {islandState.audio?.output_volume ?? 100}%
+                    </span>
+                  </div>
+                </button>
+              {/if}
 
               <!-- Clipboard History & Snippets Card -->
-              <button
-                type="button"
-                class="action-card-btn"
-                onclick={handleOpenClipboard}
-                aria-label="Open Clipboard History and Snippets"
-              >
-                <div class="card-icon clipboard-icon">
-                  📋
-                </div>
-                <div class="card-text">
-                  <span class="card-title">
-                    Clipboard & Snippets ({clipboardCount} items)
-                  </span>
-                  <span class="card-subtitle">
-                    {islandState.clipboard.snippets.length} pinned snippets • 1-click copy & paste
-                  </span>
-                </div>
-              </button>
+              {#if settings.show_clipboard_in_pill}
+                <button
+                  type="button"
+                  class="action-card-btn"
+                  onclick={handleOpenClipboard}
+                  aria-label="Open Clipboard History and Snippets"
+                >
+                  <div class="card-icon clipboard-icon">
+                    📋
+                  </div>
+                  <div class="card-text">
+                    <span class="card-title">
+                      Clipboard & Snippets ({clipboardCount} items)
+                    </span>
+                    <span class="card-subtitle">
+                      {islandState.clipboard.snippets.length} pinned snippets • 1-click copy & paste
+                    </span>
+                  </div>
+                </button>
+              {/if}
 
               <!-- Desktop Drop Shelf Card -->
-              <button
-                type="button"
-                class="action-card-btn"
-                onclick={handleOpenShelf}
-                aria-label="Open Desktop Drop Shelf"
-              >
-                <div class="card-icon shelf-icon">
-                  📁
-                </div>
-                <div class="card-text">
-                  <span class="card-title">
-                    Desktop Drop Shelf ({shelfCount} Parked)
-                  </span>
-                  <span class="card-subtitle">
-                    Drag & drop files or screenshots to park while switching apps
-                  </span>
-                </div>
-              </button>
+              {#if settings.show_shelf_in_pill}
+                <button
+                  type="button"
+                  class="action-card-btn"
+                  onclick={handleOpenShelf}
+                  aria-label="Open Desktop Drop Shelf"
+                >
+                  <div class="card-icon shelf-icon">
+                    📁
+                  </div>
+                  <div class="card-text">
+                    <span class="card-title">
+                      Desktop Drop Shelf ({shelfCount} Parked)
+                    </span>
+                    <span class="card-subtitle">
+                      Drag & drop files or screenshots to park while switching apps
+                    </span>
+                  </div>
+                </button>
+              {/if}
 
               <!-- Settings & Preferences Card -->
               <button

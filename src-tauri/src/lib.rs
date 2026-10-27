@@ -349,6 +349,10 @@ fn set_agent_status(
     state: State<'_, AppState>,
     status: dev_ipc::AgentStatus,
 ) -> Result<(), String> {
+    let settings = settings::load_settings_from_disk();
+    if !settings.show_agent_in_pill {
+        return Ok(());
+    }
     *state.dev_manager.agent.lock().unwrap() = status.clone();
     let _ = app.emit("agent-status-change", &status);
     dev_ipc::write_state_to_disk(&state.dev_manager);
@@ -373,7 +377,26 @@ fn get_settings() -> settings::IslandSettings {
 }
 
 #[tauri::command]
-fn save_settings(settings: settings::IslandSettings) -> Result<(), String> {
+fn save_settings(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    settings: settings::IslandSettings,
+) -> Result<(), String> {
+    if !settings.show_agent_in_pill {
+        let mut agent = state.dev_manager.agent.lock().unwrap();
+        *agent = dev_ipc::AgentStatus::default();
+        drop(agent);
+
+        let (lock, cvar) = &*state.dev_manager.review_pending;
+        let mut val = lock.lock().unwrap();
+        if val.is_none() {
+            *val = Some(true);
+            cvar.notify_all();
+        }
+
+        let _ = app.emit("agent-status-change", &dev_ipc::AgentStatus::default());
+        dev_ipc::write_state_to_disk(&state.dev_manager);
+    }
     settings::save_settings_to_disk(&settings)
 }
 

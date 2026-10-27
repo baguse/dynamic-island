@@ -189,6 +189,9 @@ class IslandStore {
   }
 
   get hasActiveAgent(): boolean {
+    if (!this.settings.show_agent_in_pill) {
+      return false;
+    }
     return (
       this.agent.state === 'thinking' ||
       this.agent.state === 'working' ||
@@ -496,6 +499,7 @@ class IslandStore {
   }
 
   async openAgent() {
+    if (!this.settings.show_agent_in_pill) return;
     await this.setMode('agent');
   }
 
@@ -832,6 +836,18 @@ class IslandStore {
       await invoke('save_settings', { settings: this.settings });
     } catch (err) {
       console.debug('save_settings note:', err);
+    }
+    if ('show_agent_in_pill' in partial && !partial.show_agent_in_pill) {
+      if (this.mode === 'agent') {
+        await this.collapse();
+      }
+      this.agent = {
+        name: 'Antigravity Agent',
+        state: 'idle',
+        message: 'Ready for your next task',
+        is_demo: false,
+      };
+      await this.syncNativeWindow();
     }
     if ('top_margin' in partial) {
       await this.syncNativeWindow();
@@ -1240,7 +1256,9 @@ class IslandStore {
     try {
       const dev = await invoke<DevStatusPayload>('get_dev_status');
       if (dev) {
-        this.agent = dev.agent;
+        if (this.settings.show_agent_in_pill) {
+          this.agent = dev.agent;
+        }
         this.build = dev.build;
         this.checkBuildWatchdog();
         if (dev.editor) {
@@ -1267,6 +1285,9 @@ class IslandStore {
 
     try {
       this.unlistenAgent = await listen<AgentStatus>('agent-status-change', async (event) => {
+        if (!this.settings.show_agent_in_pill) {
+          return;
+        }
         const wasActive = this.hasActiveAgent;
         this.agent = event.payload;
         const nowActive = this.hasActiveAgent;

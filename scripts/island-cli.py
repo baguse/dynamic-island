@@ -87,6 +87,18 @@ def get_socket_path():
         return os.path.join(runtime_dir, "dynamic-island.sock")
     return f"/tmp/dynamic-island-{os.getuid()}.sock"
 
+def is_agent_enabled():
+    try:
+        config_dir = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+        settings_path = os.path.join(config_dir, "dynamic-island", "settings.json")
+        if os.path.exists(settings_path):
+            with open(settings_path, "r") as f:
+                data = json.load(f)
+                return data.get("show_agent_in_pill", True)
+    except Exception:
+        pass
+    return True
+
 def send_ipc(payload):
     sock_path = get_socket_path()
     if not os.path.exists(sock_path):
@@ -221,6 +233,12 @@ def cmd_agent(args):
         else:
             print("none")
             return 2
+
+    if not is_agent_enabled():
+        if getattr(args, "wait", False):
+            print("✓ Human-in-the-loop: Changes APPROVED on Dynamic Island (Agent module disabled).")
+            return 0
+        return 0
 
     payload = {
         "target": "agent",
@@ -545,6 +563,13 @@ def cmd_hook(args):
     Called directly by Antigravity via `island-cli hook <event>`.
     """
     event = args.event
+    if not is_agent_enabled():
+        if event == "pre-tool":
+            print(json.dumps({"decision": "allow"}))
+        else:
+            print(json.dumps({}))
+        return 0
+
     raw_input = ""
     try:
         raw_input = sys.stdin.read()
@@ -1039,7 +1064,9 @@ def run_mcp_server():
             tool_name = params.get("name")
             arguments = params.get("arguments", {})
 
-            if tool_name == "island_update_status":
+            if not is_agent_enabled() and tool_name in ("island_update_status", "island_prompt_user", "island_request_review"):
+                text = "Dynamic Island AI Agent module is disabled in settings; request suppressed"
+            elif tool_name == "island_update_status":
                 send_ipc({
                     "target": "agent",
                     "state": arguments.get("state", "working"),

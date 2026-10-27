@@ -179,6 +179,7 @@ impl DevManager {
     }
 
     pub fn resolve_review(&self, app_handle: Option<&AppHandle>, decision: bool) {
+        let settings = crate::settings::load_settings_from_disk();
         *self.last_decision.lock().unwrap() = Some((decision, std::time::Instant::now()));
         write_review_to_disk(decision);
 
@@ -187,6 +188,14 @@ impl DevManager {
             let mut val = lock.lock().unwrap();
             *val = Some(decision);
             cvar.notify_all();
+        }
+
+        if !settings.show_agent_in_pill {
+            let mut agent = self.agent.lock().unwrap();
+            *agent = AgentStatus::default();
+            drop(agent);
+            write_state_to_disk(self);
+            return;
         }
 
         let mut agent = self.agent.lock().unwrap();
@@ -485,6 +494,25 @@ pub fn process_ipc_message(
             wait,
             timeout_sec,
         } => {
+            let settings = crate::settings::load_settings_from_disk();
+            if !settings.show_agent_in_pill {
+                if wait.unwrap_or(false) {
+                    write_review_to_disk(true);
+                    return serde_json::json!({
+                        "ok": true,
+                        "decision": "approved",
+                        "suppressed": true,
+                        "message": "AI Agent module is disabled in settings; auto-approved"
+                    }).to_string();
+                }
+
+                return serde_json::json!({
+                    "ok": true,
+                    "suppressed": true,
+                    "message": "AI Agent module is disabled in settings"
+                }).to_string();
+            }
+
             let mut agent = dev_manager.agent.lock().unwrap();
             let agent_name = name.unwrap_or_else(|| agent.name.clone());
 
@@ -629,6 +657,17 @@ pub fn process_ipc_message(
             icon,
             duration_ms,
         } => {
+            let settings = crate::settings::load_settings_from_disk();
+            if !settings.show_agent_in_pill {
+                let is_agent_notif = app_name.as_deref().map_or(false, |a| {
+                    a.eq_ignore_ascii_case("ai assistant") || a.eq_ignore_ascii_case("antigravity")
+                }) || title.contains("Agent") || title.contains("Antigravity");
+
+                if is_agent_notif {
+                    return r#"{"ok":true,"suppressed":true}"#.to_string();
+                }
+            }
+
             let notif = serde_json::json!({
                 "id": format!("ipc-notif-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()),
                 "title": title,
@@ -674,6 +713,10 @@ pub fn process_ipc_message(
         },
 
         IpcMessage::ReviewDecision { decision } => {
+            let settings = crate::settings::load_settings_from_disk();
+            if !settings.show_agent_in_pill {
+                return r#"{"ok":true,"suppressed":true}"#.to_string();
+            }
             dev_manager.resolve_review(Some(app_handle), decision);
             r#"{"ok":true}"#.to_string()
         }

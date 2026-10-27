@@ -241,18 +241,18 @@
       </div>
     </div>
 
-    <!-- Section 3: Compact Pill Modules -->
+    <!-- Section 3: Active Modules & Features -->
     <div class="settings-group">
-      <span class="group-title">Compact Pill Modules</span>
+      <span class="group-title">Modules & Features</span>
 
       <div class="setting-item">
-        <span class="setting-name">CPU & RAM Telemetry Chip</span>
+        <span class="setting-name">CPU & RAM Telemetry</span>
         <button
           type="button"
           class="toggle-switch"
           class:checked={settings.show_system_in_pill}
           onclick={() => handleToggleModule('system')}
-          aria-label="Toggle system telemetry in pill"
+          aria-label="Toggle system telemetry module"
         >
           <span class="toggle-thumb"></span>
         </button>
@@ -272,52 +272,52 @@
       </div>
 
       <div class="setting-item">
-        <span class="setting-name">Media Player Active Pill</span>
+        <span class="setting-name">Media Player (MPRIS)</span>
         <button
           type="button"
           class="toggle-switch"
           class:checked={settings.show_media_in_pill}
           onclick={() => handleToggleModule('media')}
-          aria-label="Toggle media in pill"
+          aria-label="Toggle media player module"
         >
           <span class="toggle-thumb"></span>
         </button>
       </div>
 
       <div class="setting-item">
-        <span class="setting-name">Terminal Build Spinner</span>
+        <span class="setting-name">Terminal Build Monitor</span>
         <button
           type="button"
           class="toggle-switch"
           class:checked={settings.show_build_in_pill}
           onclick={() => handleToggleModule('build')}
-          aria-label="Toggle build in pill"
+          aria-label="Toggle terminal build monitor"
         >
           <span class="toggle-thumb"></span>
         </button>
       </div>
 
       <div class="setting-item">
-        <span class="setting-name">AI Agent Activity Aura</span>
+        <span class="setting-name">AI Agent Companion</span>
         <button
           type="button"
           class="toggle-switch"
           class:checked={settings.show_agent_in_pill}
           onclick={() => handleToggleModule('agent')}
-          aria-label="Toggle agent in pill"
+          aria-label="Toggle AI agent companion module"
         >
           <span class="toggle-thumb"></span>
         </button>
       </div>
 
       <div class="setting-item">
-        <span class="setting-name">Git Repository Branch & Status</span>
+        <span class="setting-name">Git Repository & Branch</span>
         <button
           type="button"
           class="toggle-switch"
           class:checked={settings.show_git_in_pill}
           onclick={() => handleToggleModule('git')}
-          aria-label="Toggle git in pill"
+          aria-label="Toggle git repository module"
         >
           <span class="toggle-thumb"></span>
         </button>
@@ -330,7 +330,7 @@
           class="toggle-switch"
           class:checked={settings.show_editor_in_pill}
           onclick={() => handleToggleModule('editor')}
-          aria-label="Toggle code editor presence in pill"
+          aria-label="Toggle code editor presence module"
         >
           <span class="toggle-thumb"></span>
         </button>
@@ -363,39 +363,39 @@
       </div>
 
       <div class="setting-item">
-        <span class="setting-name">Microphone Mute Status Badge</span>
+        <span class="setting-name">Hardware & Audio (Mic Mute & Output Switcher)</span>
         <button
           type="button"
           class="toggle-switch"
           class:checked={settings.show_mic_in_pill}
           onclick={() => handleToggleModule('mic')}
-          aria-label="Toggle microphone mute badge in pill"
+          aria-label="Toggle hardware & audio module"
         >
           <span class="toggle-thumb"></span>
         </button>
       </div>
 
       <div class="setting-item">
-        <span class="setting-name">Desktop Drop Shelf Badge</span>
+        <span class="setting-name">Desktop Drop Shelf (Drag & Drop Zone)</span>
         <button
           type="button"
           class="toggle-switch"
           class:checked={settings.show_shelf_in_pill}
           onclick={() => handleToggleModule('shelf')}
-          aria-label="Toggle desktop drop shelf badge in pill"
+          aria-label="Toggle desktop drop shelf module"
         >
           <span class="toggle-thumb"></span>
         </button>
       </div>
 
       <div class="setting-item">
-        <span class="setting-name">Quick Clipboard & Snippets</span>
+        <span class="setting-name">Quick Clipboard History & Snippets</span>
         <button
           type="button"
           class="toggle-switch"
           class:checked={settings.show_clipboard_in_pill}
           onclick={() => handleToggleModule('clipboard')}
-          aria-label="Toggle clipboard history in pill"
+          aria-label="Toggle clipboard history module"
         >
           <span class="toggle-thumb"></span>
         </button>
