@@ -111,6 +111,21 @@ class IslandStore {
   private leaveCollapseTimeout: ReturnType<typeof setTimeout> | null = null;
   private autoCollapseTimeout: ReturnType<typeof setTimeout> | null = null;
   private isHovered = false;
+  private lastActivityTime = 0;
+
+  get isCursorOverSurface(): boolean {
+    if (this.isHovered) {
+      return true;
+    }
+    if (typeof document !== 'undefined') {
+      const el = document.querySelector('.island-surface');
+      if (el?.matches(':hover')) {
+        this.isHovered = true;
+        return true;
+      }
+    }
+    return false;
+  }
 
   private unlistenMedia: UnlistenFn | null = null;
   private unlistenNotification: UnlistenFn | null = null;
@@ -271,6 +286,7 @@ class IslandStore {
     this.activePanel = targetMode;
     this.isExpanding = true;
     this.isCollapsing = false;
+    this.isHovered = this.isCursorOverSurface;
     this.resetInactivityTimer();
 
     // 1. Immediately expand the native window height so canvas is ready
@@ -592,35 +608,49 @@ class IslandStore {
 
   // --- Hover Expand & Lost Focus Minimization ---
 
-  handlePillHoverStart() {
-    if (this.mode !== 'idle' || !this.settings.hover_expand_enabled) return;
-    this.clearHoverTimers();
-
-    this.hoverExpandTimeout = setTimeout(() => {
-      if (this.mode === 'idle') {
-        this.expand();
-      }
-    }, this.settings.hover_delay_ms);
-  }
-
-  handlePillHoverEnd() {
-    if (this.hoverExpandTimeout) {
-      clearTimeout(this.hoverExpandTimeout);
-      this.hoverExpandTimeout = null;
-    }
-  }
-
-  handlePanelPointerEnter() {
+  handleSurfacePointerEnter() {
     this.isHovered = true;
     if (this.leaveCollapseTimeout) {
       clearTimeout(this.leaveCollapseTimeout);
       this.leaveCollapseTimeout = null;
     }
-    this.resetInactivityTimer();
+
+    if (this.mode === 'idle') {
+      if (this.settings.hover_expand_enabled) {
+        if (this.hoverExpandTimeout) {
+          clearTimeout(this.hoverExpandTimeout);
+        }
+        this.hoverExpandTimeout = setTimeout(() => {
+          if (this.mode === 'idle' && this.isCursorOverSurface) {
+            this.expand();
+          }
+        }, this.settings.hover_delay_ms);
+      }
+    } else {
+      this.resetInactivityTimer();
+    }
   }
 
-  handlePanelPointerLeave() {
+  handleSurfacePointerMove() {
+    this.isHovered = true;
+    if (this.leaveCollapseTimeout) {
+      clearTimeout(this.leaveCollapseTimeout);
+      this.leaveCollapseTimeout = null;
+    }
+    const now = Date.now();
+    if (now - this.lastActivityTime > 1000) {
+      this.lastActivityTime = now;
+      this.resetInactivityTimer();
+    }
+  }
+
+  handleSurfacePointerLeave() {
     this.isHovered = false;
+    if (this.hoverExpandTimeout) {
+      clearTimeout(this.hoverExpandTimeout);
+      this.hoverExpandTimeout = null;
+    }
+
     if (this.mode === 'idle' || this.mode === 'notification') return;
 
     if (this.leaveCollapseTimeout) {
@@ -628,17 +658,42 @@ class IslandStore {
     }
 
     this.leaveCollapseTimeout = setTimeout(() => {
-      if (!this.isHovered && this.mode !== 'idle' && this.mode !== 'notification') {
+      // Only collapse if cursor is truly not over the dynamic island area
+      if (!this.isCursorOverSurface && this.mode !== 'idle' && this.mode !== 'notification') {
         this.collapse();
       }
     }, this.settings.leave_delay_ms);
   }
 
+  handlePillHoverStart() {
+    this.handleSurfacePointerEnter();
+  }
+
+  handlePillHoverEnd() {
+    this.handleSurfacePointerLeave();
+  }
+
+  handlePanelPointerEnter() {
+    this.handleSurfacePointerEnter();
+  }
+
+  handlePanelPointerLeave() {
+    this.handleSurfacePointerLeave();
+  }
+
   handleWindowBlur() {
-    // When focus leaves the window (user clicks on another app), minimize back
+    // When focus leaves the window, NEVER collapse if cursor is still over the island!
+    if (this.isCursorOverSurface) {
+      return;
+    }
     if (this.mode !== 'idle' && this.mode !== 'notification') {
       this.collapse();
     }
+  }
+
+  handleUserActivity() {
+    this.lastActivityTime = Date.now();
+    this.resetInactivityTimer();
   }
 
   clearHoverTimers() {
@@ -665,9 +720,15 @@ class IslandStore {
     }
 
     this.autoCollapseTimeout = setTimeout(() => {
-      if (!this.isHovered && this.mode !== 'idle' && this.mode !== 'notification') {
-        this.collapse();
+      if (this.mode === 'idle' || this.mode === 'notification') return;
+
+      if (this.isCursorOverSurface) {
+        // Cursor is still over the dynamic island area! Keep open and re-check after inactivity timeout
+        this.resetInactivityTimer();
+        return;
       }
+
+      this.collapse();
     }, this.settings.inactivity_timeout_s * 1000);
   }
 

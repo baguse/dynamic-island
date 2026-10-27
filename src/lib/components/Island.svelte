@@ -30,19 +30,15 @@
   }
 
   function handleSurfaceMouseEnter() {
-    if (islandState.mode === 'idle') {
-      islandState.handlePillHoverStart();
-    } else {
-      islandState.handlePanelPointerEnter();
-    }
+    islandState.handleSurfacePointerEnter();
   }
 
   function handleSurfaceMouseLeave() {
-    if (islandState.mode === 'idle') {
-      islandState.handlePillHoverEnd();
-    } else {
-      islandState.handlePanelPointerLeave();
-    }
+    islandState.handleSurfacePointerLeave();
+  }
+
+  function handleSurfacePointerMove() {
+    islandState.handleSurfacePointerMove();
   }
 
   function handleOpenAgent(e: MouseEvent) {
@@ -102,8 +98,9 @@
 </script>
 
 <svelte:window
-  onkeydown={() => islandState.resetInactivityTimer()}
-  onpointerdown={() => islandState.resetInactivityTimer()}
+  onkeydown={() => islandState.handleUserActivity()}
+  onpointerdown={() => islandState.handleUserActivity()}
+  onwheel={() => islandState.handleUserActivity()}
   onblur={() => islandState.handleWindowBlur()}
 />
 
@@ -135,6 +132,7 @@
   }}
   onmouseenter={handleSurfaceMouseEnter}
   onmouseleave={handleSurfaceMouseLeave}
+  onpointermove={handleSurfacePointerMove}
   style="width: {islandState.dimensions.width}px; min-height: {islandState.dimensions.height}px; height: {islandState.dimensions.height}px;"
 >
   {#if islandState.mode === 'idle' || islandState.isCollapsing}
