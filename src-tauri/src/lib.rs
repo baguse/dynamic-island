@@ -9,6 +9,7 @@ mod media;
 mod settings;
 mod system;
 mod tray;
+mod weather;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -987,6 +988,14 @@ pub fn run() {
                             let _ = handle.emit("git-status-change", &git_status);
                         }
                     }
+
+                    // 5. Weather check (initial on counter=1, then every ~15 minutes = 1125 iterations)
+                    if counter == 1 || counter % 1125 == 0 {
+                        let city = settings::load_settings_from_disk().weather_city;
+                        if let Ok(w) = weather::get_weather(city) {
+                            let _ = handle.emit("weather-update", &w);
+                        }
+                    }
                 }
             });
 
@@ -1043,6 +1052,7 @@ pub fn run() {
             remove_shelf_item,
             clear_shelf,
             open_shelf_item_in_file_manager,
+            weather::fetch_weather,
             copy_shelf_file_to_file_manager,
         ])
         .run(tauri::generate_context!())

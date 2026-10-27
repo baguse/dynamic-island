@@ -18,6 +18,7 @@
   import ClipboardPreview from './ClipboardPreview.svelte';
   import DropShelfPreview from './DropShelfPreview.svelte';
   import AudioEqualizer from './AudioEqualizer.svelte';
+  import AmbientSkyCanvas from './AmbientSkyCanvas.svelte';
 
   const media = $derived(islandState.currentMedia);
   const telemetry = $derived(islandState.telemetry);
@@ -30,9 +31,24 @@
   const isMicMuted = $derived(islandState.isMicMuted);
   const shelfCount = $derived(islandState.shelfCount);
   const clipboardCount = $derived(islandState.clipboardHistoryCount);
+  const weather = $derived(islandState.weather);
   const activePanelMode = $derived(
     islandState.activePanel || (islandState.mode !== 'idle' ? islandState.mode : islandState.previousMode)
   );
+
+  function getWeatherIcon(condition?: string, timePeriod?: string): string {
+    if (!condition) return '🌤️';
+    if (condition === 'rain') return '🌧️';
+    if (condition === 'thunderstorm') return '⛈️';
+    if (condition === 'snow') return '❄️';
+    if (condition === 'fog') return '🌫️';
+    if (condition === 'clouds') return '☁️';
+    if (timePeriod === 'night') return '🌙';
+    if (timePeriod === 'sunset' || timePeriod === 'dawn') return '🌅';
+    return '☀️';
+  }
+
+  const weatherIcon = $derived(getWeatherIcon(weather?.condition, weather?.time_period));
 
   let unlistenDragDrop: UnlistenFn | null = null;
   let isSurfaceDragOver = $state(false);
@@ -299,6 +315,8 @@
   ondrop={handleSurfaceDrop}
   style="width: {islandState.dimensions.width}px; min-height: {islandState.dimensions.height}px; height: {islandState.dimensions.height}px;"
 >
+  <AmbientSkyCanvas isExpanded={islandState.mode !== 'idle' && !islandState.isCollapsing} />
+
   {#if islandState.mode === 'idle' || islandState.isCollapsing}
     <div
       class="compact-pill-wrapper"
@@ -482,7 +500,14 @@
                 🌐 {islandState.webPortsCount}
               </span>
             {:else if !isMicMuted && shelfCount === 0}
-              <span class="pill-badge">Idle</span>
+              {#if weather && settings.ambient_sky_enabled}
+                <span class="pill-badge pill-badge-weather" title="{weather.description || 'Weather'} • {weather.location || 'Local'}">
+                  <span class="pill-weather-icon">{weatherIcon}</span>
+                  <span>{Math.round(weather.temp_c)}°</span>
+                </span>
+              {:else}
+                <span class="pill-badge">Idle</span>
+              {/if}
             {/if}
           </div>
         </div>
@@ -531,6 +556,19 @@
             </div>
 
             <div class="topbar-right">
+              {#if weather && settings.ambient_sky_enabled}
+                <!-- Quick Weather Status & Refresh -->
+                <button
+                  type="button"
+                  class="topbar-weather-badge"
+                  onclick={(e) => { e.stopPropagation(); islandState.refreshWeather(); }}
+                  title="{weather.description || 'Weather'}, {Math.round(weather.temp_c)}°C ({Math.round(weather.temp_f)}°F) in {weather.location || 'Local'} • Click to refresh"
+                >
+                  <span class="weather-icon">{weatherIcon}</span>
+                  <span class="weather-temp">{Math.round(weather.temp_c)}°C</span>
+                </button>
+              {/if}
+
               <!-- Quick Hardware Mic Mute Toggle -->
               <button
                 type="button"
@@ -944,6 +982,8 @@
 
   /* Content Transition Wrappers */
   .compact-pill-wrapper {
+    position: relative;
+    z-index: 1;
     width: 100%;
     height: 100%;
     display: flex;
@@ -971,6 +1011,8 @@
   }
 
   .expanded-panel-wrapper {
+    position: relative;
+    z-index: 1;
     width: 100%;
     height: 100%;
     display: flex;
@@ -1159,6 +1201,25 @@
     font-variant-numeric: tabular-nums;
     font-size: 9.5px;
     padding: 2px 7px;
+  }
+
+  .pill-badge-weather {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.09);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--island-text-primary, #ffffff);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 9999px;
+  }
+
+  .pill-weather-icon {
+    font-size: 11px;
+    line-height: 1;
   }
 
   .pill-media-text {
@@ -1647,6 +1708,38 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  .topbar-weather-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--island-border, rgba(255, 255, 255, 0.14));
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--island-text-primary, #ffffff);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .topbar-weather-badge:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+
+  .weather-icon {
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .weather-temp {
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--island-text-primary, #ffffff);
   }
 
   .topbar-mic-badge {

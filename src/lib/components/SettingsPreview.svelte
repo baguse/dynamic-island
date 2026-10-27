@@ -234,6 +234,35 @@
   function handleReset() {
     islandState.resetSettings();
   }
+
+  const weather = $derived(islandState.weather);
+
+  function getWeatherIcon(condition?: string, timePeriod?: string): string {
+    if (!condition) return '🌤️';
+    if (condition === 'rain') return '🌧️';
+    if (condition === 'thunderstorm') return '⛈️';
+    if (condition === 'snow') return '❄️';
+    if (condition === 'fog') return '🌫️';
+    if (condition === 'clouds') return '☁️';
+    if (timePeriod === 'night') return '🌙';
+    if (timePeriod === 'sunset' || timePeriod === 'dawn') return '🌅';
+    return '☀️';
+  }
+
+  const weatherIcon = $derived(getWeatherIcon(weather?.condition, weather?.time_period));
+
+  let cityInput = $state('');
+
+  $effect(() => {
+    cityInput = settings.weather_city || '';
+  });
+
+  async function handleSaveCity() {
+    const trimmed = cityInput.trim();
+    const newCity = trimmed.length > 0 ? trimmed : null;
+    await islandState.updateSettings({ weather_city: newCity });
+    await islandState.refreshWeather(newCity || undefined);
+  }
 </script>
 
 <div class="settings-wrapper">
@@ -658,7 +687,230 @@
       </div>
     </div>
 
-    <!-- Section 4: System Integration -->
+    <!-- Section 4: Live Weather & Ambient Sky Canvas -->
+    <div class="settings-group">
+      <div class="group-header">
+        <div class="group-title-col">
+          <span class="group-title">Live Weather & Ambient Sky Canvas</span>
+          <span class="group-desc">Subtle animated sky background (stars, rain, petals, clouds)</span>
+        </div>
+        {#if weather}
+          <span class="weather-pill-indicator" title="{weather.description || 'Weather'} in {weather.location || 'Local'}">
+            {weatherIcon} {Math.round(weather.temp_c)}°C
+          </span>
+        {/if}
+      </div>
+
+      <!-- Toggle Ambient Sky -->
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-name">Ambient Sky Atmosphere</span>
+          <span class="setting-desc">Drifting stars, neon rain, falling sakura petals, and sunset clouds</span>
+        </div>
+        <button
+          type="button"
+          class="toggle-switch"
+          class:checked={settings.ambient_sky_enabled}
+          onclick={() => islandState.updateSettings({ ambient_sky_enabled: !settings.ambient_sky_enabled })}
+          aria-label="Toggle ambient sky canvas"
+        >
+          <span class="toggle-thumb"></span>
+        </button>
+      </div>
+
+      {#if settings.ambient_sky_enabled}
+        <!-- Sky Theme Selector -->
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-name">Atmospheric Theme</span>
+            <span class="setting-desc">Preset sky or dynamic sync with live weather & sun cycle</span>
+          </div>
+          <div class="sky-theme-segmented">
+            <button
+              type="button"
+              class="sky-theme-btn"
+              class:active={settings.ambient_sky_theme === 'auto'}
+              onclick={() => islandState.updateSettings({ ambient_sky_theme: 'auto' })}
+              title="Live Weather & Sun Cycle (Dynamic Day/Night/Rain/Clouds/Snow/Sakura)"
+            >
+              <span class="sky-btn-icon">☀️🌧️</span>
+              <span class="sky-btn-label">Auto</span>
+            </button>
+            <button
+              type="button"
+              class="sky-theme-btn"
+              class:active={settings.ambient_sky_theme === 'stars'}
+              onclick={() => islandState.updateSettings({ ambient_sky_theme: 'stars' })}
+              title="Cosmic Night & Twinkling Meteorites"
+            >
+              <span class="sky-btn-icon">✨</span>
+              <span class="sky-btn-label">Stars</span>
+            </button>
+            <button
+              type="button"
+              class="sky-theme-btn"
+              class:active={settings.ambient_sky_theme === 'rain'}
+              onclick={() => islandState.updateSettings({ ambient_sky_theme: 'rain' })}
+              title="Cyberpunk Neon Rain & Ripple Splashes"
+            >
+              <span class="sky-btn-icon">🌧️</span>
+              <span class="sky-btn-label">Rain</span>
+            </button>
+            <button
+              type="button"
+              class="sky-theme-btn"
+              class:active={settings.ambient_sky_theme === 'sakura'}
+              onclick={() => islandState.updateSettings({ ambient_sky_theme: 'sakura' })}
+              title="Falling Cherry Blossom Petals"
+            >
+              <span class="sky-btn-icon">🌸</span>
+              <span class="sky-btn-label">Sakura</span>
+            </button>
+            <button
+              type="button"
+              class="sky-theme-btn"
+              class:active={settings.ambient_sky_theme === 'clouds'}
+              onclick={() => islandState.updateSettings({ ambient_sky_theme: 'clouds' })}
+              title="Warm Sunset Clouds & Twilight Glow"
+            >
+              <span class="sky-btn-icon">⛅</span>
+              <span class="sky-btn-label">Clouds</span>
+            </button>
+            <button
+              type="button"
+              class="sky-theme-btn"
+              class:active={settings.ambient_sky_theme === 'snow'}
+              onclick={() => islandState.updateSettings({ ambient_sky_theme: 'snow' })}
+              title="Crystalline Snowflakes & Gentle Drift"
+            >
+              <span class="sky-btn-icon">❄️</span>
+              <span class="sky-btn-label">Snow</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sky Intensity Selector -->
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-name">Visual Density & Opacity</span>
+            <span class="setting-desc">Particle visibility and atmospheric brightness</span>
+          </div>
+          <div class="position-segmented" style="max-width: 240px;">
+            <button
+              type="button"
+              class="position-btn"
+              class:active={settings.ambient_sky_intensity === 'subtle'}
+              onclick={() => islandState.updateSettings({ ambient_sky_intensity: 'subtle' })}
+              title="Subtle (15% opacity, serene)"
+            >
+              <span class="pos-label">Subtle</span>
+            </button>
+            <button
+              type="button"
+              class="position-btn"
+              class:active={settings.ambient_sky_intensity === 'medium'}
+              onclick={() => islandState.updateSettings({ ambient_sky_intensity: 'medium' })}
+              title="Medium (28% opacity, balanced)"
+            >
+              <span class="pos-label">Medium</span>
+            </button>
+            <button
+              type="button"
+              class="position-btn"
+              class:active={settings.ambient_sky_intensity === 'vivid'}
+              onclick={() => islandState.updateSettings({ ambient_sky_intensity: 'vivid' })}
+              title="Vivid (45% opacity, expressive)"
+            >
+              <span class="pos-label">Vivid</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Live Weather Status Card & City Config -->
+        <div class="weather-dashboard-card">
+          {#if weather}
+            <div class="weather-main-row">
+              <div class="weather-left-info">
+                <span class="weather-big-icon">{weatherIcon}</span>
+                <div class="weather-temp-group">
+                  <span class="weather-temp-c">{Math.round(weather.temp_c)}°C</span>
+                  <span class="weather-temp-f">{Math.round(weather.temp_f)}°F</span>
+                </div>
+              </div>
+              <div class="weather-center-info">
+                <span class="weather-condition-title">{weather.description || weather.condition}</span>
+                <span class="weather-loc-subtitle">📍 {weather.location || 'Detected Location'}</span>
+              </div>
+              <div class="weather-right-actions">
+                <button
+                  type="button"
+                  class="weather-refresh-btn"
+                  onclick={() => islandState.refreshWeather()}
+                  title="Query latest weather from wttr.in"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                  <span>Refresh</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="weather-details-grid">
+              <div class="weather-stat-chip">
+                <span class="stat-icon">💧</span>
+                <span class="stat-label">Humidity:</span>
+                <span class="stat-value">{weather.humidity}%</span>
+              </div>
+              <div class="weather-stat-chip">
+                <span class="stat-icon">☁️</span>
+                <span class="stat-label">Clouds:</span>
+                <span class="stat-value">{weather.cloud_cover}%</span>
+              </div>
+              {#if weather.sunrise}
+                <div class="weather-stat-chip">
+                  <span class="stat-icon">🌅</span>
+                  <span class="stat-label">Sunrise:</span>
+                  <span class="stat-value">{weather.sunrise}</span>
+                </div>
+              {/if}
+              {#if weather.sunset}
+                <div class="weather-stat-chip">
+                  <span class="stat-icon">🌇</span>
+                  <span class="stat-label">Sunset:</span>
+                  <span class="stat-value">{weather.sunset}</span>
+                </div>
+              {/if}
+            </div>
+          {:else}
+            <div class="weather-loading-row">
+              <span class="weather-loading-icon">🌤️</span>
+              <span>Fetching live local weather...</span>
+            </div>
+          {/if}
+
+          <!-- City Override Input -->
+          <div class="weather-city-input-row">
+            <span class="city-input-label">City:</span>
+            <input
+              type="text"
+              class="city-text-input"
+              placeholder="e.g. London, Tokyo (blank for auto IP)"
+              value={cityInput}
+              oninput={(e) => { cityInput = (e.target as HTMLInputElement).value; }}
+              onkeydown={(e) => { if (e.key === 'Enter') handleSaveCity(); }}
+            />
+            <button type="button" class="btn-save-city" onclick={handleSaveCity}>
+              Save
+            </button>
+          </div>
+        </div>
+      {/if}
+    </div>
+
+    <!-- Section 5: System Integration -->
     <div class="settings-group">
       <span class="group-title">System Integration</span>
 
@@ -1328,6 +1580,252 @@
   .tip-bullet {
     font-size: 12px;
     flex-shrink: 0;
+  }
+
+  /* Live Weather & Ambient Sky Settings */
+  .weather-pill-indicator {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--island-accent, #38bdf8);
+    background: rgba(56, 189, 248, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.28);
+    padding: 2px 7px;
+    border-radius: 9999px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sky-theme-segmented {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 3px;
+    border-radius: 8px;
+    border: 1px solid var(--island-card-border, rgba(255, 255, 255, 0.08));
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .sky-theme-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 6px 2px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--island-text-muted, #94a3b8);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .sky-theme-btn:hover {
+    color: var(--island-text-primary, #ffffff);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .sky-theme-btn.active {
+    background: var(--island-accent, #3b82f6);
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.35);
+  }
+
+  .sky-btn-icon {
+    font-size: 13px;
+    line-height: 1;
+  }
+
+  .sky-btn-label {
+    font-size: 9.5px;
+    font-weight: 600;
+  }
+
+  .weather-dashboard-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--island-card-border, rgba(255, 255, 255, 0.08));
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .weather-main-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .weather-left-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .weather-big-icon {
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  .weather-temp-group {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+
+  .weather-temp-c {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--island-text-primary, #ffffff);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .weather-temp-f {
+    font-size: 11px;
+    color: var(--island-text-muted, #94a3b8);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .weather-center-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .weather-condition-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--island-text-primary, #ffffff);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .weather-loc-subtitle {
+    font-size: 10px;
+    color: var(--island-text-muted, #94a3b8);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .weather-refresh-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    color: var(--island-text-secondary, #cbd5e1);
+    font-size: 10.5px;
+    font-weight: 500;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .weather-refresh-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+
+  .weather-details-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 6px 8px;
+    border-radius: 6px;
+  }
+
+  .weather-stat-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+  }
+
+  .stat-icon {
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  .stat-label {
+    color: var(--island-text-muted, #94a3b8);
+  }
+
+  .stat-value {
+    color: var(--island-text-primary, #ffffff);
+    font-weight: 600;
+  }
+
+  .weather-loading-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--island-text-muted, #94a3b8);
+    padding: 6px 0;
+  }
+
+  .weather-loading-icon {
+    font-size: 15px;
+  }
+
+  .weather-city-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+  }
+
+  .city-input-label {
+    font-size: 10.5px;
+    color: var(--island-text-muted, #94a3b8);
+    flex-shrink: 0;
+  }
+
+  .city-text-input {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    color: var(--island-text-primary, #ffffff);
+    font-size: 11px;
+    padding: 4px 8px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .city-text-input:focus {
+    border-color: var(--island-accent, #3b82f6);
+  }
+
+  .city-text-input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+  }
+
+  .btn-save-city {
+    background: rgba(59, 130, 246, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    color: #93c5fd;
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-save-city:hover {
+    background: rgba(59, 130, 246, 0.35);
+    color: #ffffff;
   }
 
   /* Bottom bar */

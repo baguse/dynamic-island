@@ -53,6 +53,25 @@ export interface AudioSpectrumData {
   energy: number;
 }
 
+export type SkyTheme = 'auto' | 'stars' | 'rain' | 'sakura' | 'clouds' | 'snow';
+export type SkyIntensity = 'subtle' | 'medium' | 'vivid';
+
+export interface WeatherData {
+  temp_c: number;
+  temp_f: number;
+  condition: string;
+  description: string;
+  location: string;
+  is_day: boolean;
+  time_period: 'dawn' | 'day' | 'sunset' | 'night' | string;
+  weather_code: number;
+  humidity: number;
+  cloud_cover: number;
+  sunrise: string;
+  sunset: string;
+  updated_at: number;
+}
+
 export interface MediaMetadata {
   player_name: string;
   title: string;
@@ -183,6 +202,10 @@ export interface IslandSettings {
   media_companion_path?: string | null;
   media_companion_style?: 'vinyl' | 'cassette';
   equalizer_style?: 'bars' | 'wave' | 'dots';
+  ambient_sky_enabled?: boolean;
+  ambient_sky_theme?: SkyTheme;
+  ambient_sky_intensity?: SkyIntensity;
+  weather_city?: string | null;
   autostart_enabled: boolean;
 }
 

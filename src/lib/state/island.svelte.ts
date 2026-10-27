@@ -25,6 +25,9 @@ import {
   type ShelfItem,
   type ModuleKey,
   type AudioSpectrumData,
+  type WeatherData,
+  type SkyTheme,
+  type SkyIntensity,
 } from '../types';
 
 export const DEFAULT_SETTINGS: IslandSettings = {
@@ -54,6 +57,10 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   media_companion_path: null,
   media_companion_style: 'vinyl',
   equalizer_style: 'bars',
+  ambient_sky_enabled: true,
+  ambient_sky_theme: 'auto',
+  ambient_sky_intensity: 'subtle',
+  weather_city: null,
   autostart_enabled: false,
 };
 
@@ -88,6 +95,7 @@ class IslandStore {
   private collapseAnimationTimer: ReturnType<typeof setTimeout> | null = null;
   private expandAnimationTimer: ReturnType<typeof setTimeout> | null = null;
   currentMedia = $state<MediaMetadata | null>(null);
+  weather = $state<WeatherData | null>(null);
   audioSpectrum = $state<AudioSpectrumData>({
     bands: [0, 0, 0, 0, 0],
     energy: 0,
@@ -175,6 +183,7 @@ class IslandStore {
 
   private unlistenMedia: UnlistenFn | null = null;
   private unlistenAudioSpectrum: UnlistenFn | null = null;
+  private unlistenWeather: UnlistenFn | null = null;
   private unlistenNotification: UnlistenFn | null = null;
   private unlistenTelemetry: UnlistenFn | null = null;
   private unlistenAgent: UnlistenFn | null = null;
@@ -1260,6 +1269,19 @@ class IslandStore {
     }
   }
 
+  async refreshWeather(city?: string) {
+    try {
+      const data = await invoke<WeatherData>('fetch_weather', {
+        city: city !== undefined ? city : (this.settings.weather_city ?? null),
+      });
+      if (data) {
+        this.weather = data;
+      }
+    } catch (err) {
+      console.debug('refreshWeather note:', err);
+    }
+  }
+
   async saveCustomPosition() {
     try {
       await invoke('save_custom_window_position');
@@ -1325,6 +1347,21 @@ class IslandStore {
       );
     } catch (err) {
       console.debug('Failed to register audio-spectrum listener:', err);
+    }
+
+    // 3c. Live Weather listener & initial load
+    try {
+      this.unlistenWeather = await listen<WeatherData>(
+        'weather-update',
+        (event) => {
+          if (event.payload) {
+            this.weather = event.payload;
+          }
+        }
+      );
+      this.refreshWeather();
+    } catch (err) {
+      console.debug('Failed to register weather listener:', err);
     }
 
     // 4. Listen for desktop notifications
@@ -1553,6 +1590,10 @@ class IslandStore {
     if (this.unlistenAudioSpectrum) {
       this.unlistenAudioSpectrum();
       this.unlistenAudioSpectrum = null;
+    }
+    if (this.unlistenWeather) {
+      this.unlistenWeather();
+      this.unlistenWeather = null;
     }
     if (this.unlistenNotification) {
       this.unlistenNotification();

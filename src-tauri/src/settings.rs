@@ -38,6 +38,14 @@ fn default_equalizer_style() -> String {
     "bars".to_string()
 }
 
+fn default_ambient_sky_theme() -> String {
+    "auto".to_string()
+}
+
+fn default_ambient_sky_intensity() -> String {
+    "subtle".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IslandSettings {
     #[serde(default = "default_theme")]
@@ -82,6 +90,14 @@ pub struct IslandSettings {
     pub media_companion_style: String,
     #[serde(default = "default_equalizer_style")]
     pub equalizer_style: String,
+    #[serde(default = "default_true")]
+    pub ambient_sky_enabled: bool,
+    #[serde(default = "default_ambient_sky_theme")]
+    pub ambient_sky_theme: String,
+    #[serde(default = "default_ambient_sky_intensity")]
+    pub ambient_sky_intensity: String,
+    #[serde(default)]
+    pub weather_city: Option<String>,
     pub autostart_enabled: bool,
 }
 
@@ -114,6 +130,10 @@ impl Default for IslandSettings {
             media_companion_path: None,
             media_companion_style: "vinyl".to_string(),
             equalizer_style: "bars".to_string(),
+            ambient_sky_enabled: true,
+            ambient_sky_theme: "auto".to_string(),
+            ambient_sky_intensity: "subtle".to_string(),
+            weather_city: None,
             autostart_enabled: false,
         }
     }
@@ -239,6 +259,9 @@ mod tests {
         assert!(s.show_media_companion);
         assert_eq!(s.media_companion_style, "vinyl");
         assert_eq!(s.equalizer_style, "bars");
+        assert!(s.ambient_sky_enabled);
+        assert_eq!(s.ambient_sky_theme, "auto");
+        assert_eq!(s.ambient_sky_intensity, "subtle");
     }
 
     #[test]
@@ -250,6 +273,9 @@ mod tests {
         assert!(s.show_media_companion);
         assert_eq!(s.media_companion_style, "vinyl");
         assert_eq!(s.equalizer_style, "bars");
+        assert!(s.ambient_sky_enabled);
+        assert_eq!(s.ambient_sky_theme, "auto");
+        assert_eq!(s.ambient_sky_intensity, "subtle");
     }
 
     #[test]
