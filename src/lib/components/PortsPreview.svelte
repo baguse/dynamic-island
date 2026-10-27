@@ -102,6 +102,7 @@
         class:active={selectedCategory === 'web'}
         onclick={() => (selectedCategory = 'web')}
       >
+        <span class="status-dot web-dot"></span>
         Web <span class="chip-count">{webCount}</span>
       </button>
       <button
@@ -110,6 +111,7 @@
         class:active={selectedCategory === 'database'}
         onclick={() => (selectedCategory = 'database')}
       >
+        <span class="status-dot db-dot"></span>
         DB <span class="chip-count">{dbCount}</span>
       </button>
       <button
@@ -118,6 +120,7 @@
         class:active={selectedCategory === 'service'}
         onclick={() => (selectedCategory = 'service')}
       >
+        <span class="status-dot service-dot"></span>
         Services <span class="chip-count">{serviceCount}</span>
       </button>
     </div>
@@ -191,11 +194,11 @@
             {#if item.is_openable}
               <button
                 type="button"
-                class="btn-action btn-open"
+                class="btn-act btn-open"
                 onclick={() => handleOpen(item.port)}
                 title="Open http://localhost:{item.port} in browser"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                   <polyline points="15 3 21 3 21 9"></polyline>
                   <line x1="10" y1="14" x2="21" y2="3"></line>
@@ -207,17 +210,22 @@
             {#if item.pid}
               <button
                 type="button"
-                class="btn-action btn-kill"
+                class="btn-act btn-kill"
                 class:loading={killingPid === item.pid}
                 onclick={(e) => handleKill(item.pid!, e)}
                 title="Kill process {item.process || ''} (PID {item.pid}) to free port :{item.port}"
                 disabled={killingPid === item.pid}
               >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-                <span>{killingPid === item.pid ? 'Killing...' : 'Kill'}</span>
+                {#if killingPid === item.pid}
+                  <span class="btn-spinner"></span>
+                  <span>Killing...</span>
+                {:else}
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                  <span>Kill</span>
+                {/if}
               </button>
             {/if}
           </div>
@@ -238,22 +246,28 @@
   }
 
   .btn-icon-refresh {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 24px;
     height: 24px;
-    border-radius: 6px;
-    border: none;
-    background: rgba(255, 255, 255, 0.08);
+    border-radius: 50%;
+    border: 1px solid var(--island-card-border, rgba(255, 255, 255, 0.08));
+    background: var(--island-card-bg, rgba(255, 255, 255, 0.08));
     color: var(--island-text-secondary, #9ca3af);
     cursor: pointer;
-    transition: all 0.15s ease;
+    padding: 0;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
   }
 
   .btn-icon-refresh:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.16);
-    color: #ffffff;
+    background: var(--island-card-hover, rgba(255, 255, 255, 0.16));
+    border-color: var(--island-border-hover, rgba(255, 255, 255, 0.25));
+    color: var(--island-text-primary, #ffffff);
+  }
+
+  .btn-icon-refresh:active:not(:disabled) {
+    transform: scale(0.92);
   }
 
   .spinning {
@@ -303,9 +317,31 @@
   }
 
   .cat-chip.active {
-    background: var(--island-accent, #3b82f6);
-    border-color: var(--island-accent, #3b82f6);
+    background: rgba(59, 130, 246, 0.2);
+    border-color: #3b82f6;
     color: #ffffff;
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .web-dot {
+    background: #3b82f6;
+    box-shadow: 0 0 6px rgba(59, 130, 246, 0.6);
+  }
+
+  .db-dot {
+    background: #10b981;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+  }
+
+  .service-dot {
+    background: #8b5cf6;
+    box-shadow: 0 0 6px rgba(139, 92, 246, 0.6);
   }
 
   .chip-count {
@@ -472,7 +508,7 @@
     flex-shrink: 0;
   }
 
-  .btn-action {
+  .btn-act {
     display: flex;
     align-items: center;
     gap: 4px;
@@ -483,6 +519,26 @@
     cursor: pointer;
     border: none;
     transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+
+  .btn-act:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .btn-act.loading {
+    opacity: 0.9;
+  }
+
+  .btn-spinner {
+    width: 9px;
+    height: 9px;
+    border: 1.5px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
   }
 
   .btn-open {

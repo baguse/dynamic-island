@@ -115,6 +115,10 @@
   class:notification={islandState.mode === 'notification' && !islandState.isCollapsing}
   class:system={islandState.mode === 'system' && !islandState.isCollapsing}
   class:settings={islandState.mode === 'settings' && !islandState.isCollapsing}
+  class:git={islandState.mode === 'git' && !islandState.isCollapsing}
+  class:editor={islandState.mode === 'editor' && !islandState.isCollapsing}
+  class:ports={islandState.mode === 'ports' && !islandState.isCollapsing}
+  class:docker={islandState.mode === 'docker' && !islandState.isCollapsing}
   class:dev-build-active={(islandState.mode === 'idle' || islandState.isCollapsing) && islandState.hasActiveBuild}
   class:agent-active={(islandState.mode === 'idle' || islandState.isCollapsing) && islandState.hasActiveAgent}
   class:media-active={(islandState.mode === 'idle' || islandState.isCollapsing) && islandState.hasActiveMedia}
@@ -702,7 +706,8 @@
   .island-surface.git,
   .island-surface.editor,
   .island-surface.ports,
-  .island-surface.docker {
+  .island-surface.docker,
+  .island-surface:not(.compact):not(.notification) {
     border-radius: 20px;
     padding: 14px 16px;
     box-shadow: var(--island-shadow, 0 8px 32px rgba(0, 0, 0, 0.75));

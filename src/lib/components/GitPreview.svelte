@@ -21,7 +21,21 @@
 </script>
 
 <div class="git-preview-wrapper">
-  <IslandHeader title="Git Repository" />
+  <IslandHeader title="Git Repository">
+    <button
+      type="button"
+      class="btn-icon-refresh"
+      onclick={handleRefresh}
+      title="Refresh Git status"
+      aria-label="Refresh Git status"
+      disabled={isRefreshing}
+    >
+      <svg class:spinning={isRefreshing} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"></polyline>
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+      </svg>
+    </button>
+  </IslandHeader>
 
   {#if !git.is_repo}
     <div class="empty-repo-card">
@@ -80,19 +94,6 @@
             </div>
           {/if}
         </div>
-        <button
-          type="button"
-          class="btn-icon-action"
-          onclick={handleRefresh}
-          title="Refresh Git status"
-          aria-label="Refresh Git status"
-          disabled={isRefreshing}
-        >
-          <svg class:spinning={isRefreshing} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="23 4 23 10 17 10"></polyline>
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-          </svg>
-        </button>
       </div>
 
       <!-- Sync Indicators -->
@@ -182,13 +183,6 @@
       </div>
     {/if}
   {/if}
-
-  <div class="bottom-bar">
-    <button type="button" class="back-link" onclick={handleBack}>
-      ← Back to Overview
-    </button>
-    <span class="ipc-hint">Git Phase 1 HUD</span>
-  </div>
 </div>
 
 <style>
@@ -305,32 +299,39 @@
     text-overflow: ellipsis;
   }
 
-  .btn-icon-action {
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    border: 1px solid var(--island-card-border, rgba(255, 255, 255, 0.1));
-    background: var(--island-card-bg, rgba(255, 255, 255, 0.08));
-    color: var(--island-text-secondary, #9ca3af);
-    display: flex;
+  .btn-icon-refresh {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1px solid var(--island-card-border, rgba(255, 255, 255, 0.08));
+    background: var(--island-card-bg, rgba(255, 255, 255, 0.08));
+    color: var(--island-text-secondary, #9ca3af);
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
+    padding: 0;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
   }
 
-  .btn-icon-action:hover {
+  .btn-icon-refresh:hover:not(:disabled) {
     background: var(--island-card-hover, rgba(255, 255, 255, 0.16));
+    border-color: var(--island-border-hover, rgba(255, 255, 255, 0.25));
     color: var(--island-text-primary, #ffffff);
   }
 
+  .btn-icon-refresh:active:not(:disabled) {
+    transform: scale(0.92);
+  }
+
   .spinning {
-    animation: spin 0.8s linear infinite;
+    animation: spin 0.7s linear infinite;
   }
 
   @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   /* Sync Row */
@@ -627,37 +628,5 @@
   .btn-refresh:hover:not(:disabled) {
     background: var(--island-accent, #3b82f6);
     border-color: var(--island-accent, #3b82f6);
-  }
-
-  /* Bottom Bar */
-  .bottom-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-top: 4px;
-    border-top: 1px solid var(--island-card-border, rgba(255, 255, 255, 0.06));
-    margin-top: 2px;
-  }
-
-  .back-link {
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--island-text-secondary, #9ca3af);
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 2px 4px;
-    border-radius: 4px;
-    transition: color 0.15s ease;
-  }
-
-  .back-link:hover {
-    color: var(--island-accent, #3b82f6);
-  }
-
-  .ipc-hint {
-    font-size: 10px;
-    color: var(--island-text-muted, #6b7280);
-    font-family: monospace;
   }
 </style>

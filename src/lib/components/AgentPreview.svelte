@@ -13,15 +13,12 @@
     e.stopPropagation();
     islandState.rejectAgentReview();
   }
-
-  function handleBack(e: MouseEvent) {
-    e.stopPropagation();
-    islandState.openOverview();
-  }
 </script>
 
 <div class="agent-preview-wrapper">
-  <IslandHeader title="AI Agent Companion" />
+  <IslandHeader title="AI Agent Companion">
+    <span class="agent-header-chip state-{agent.state}">{agent.state}</span>
+  </IslandHeader>
 
   <!-- Main Agent Status Card -->
   <div class="agent-card" class:review={agent.state === 'review'} class:working={agent.state === 'working'} class:thinking={agent.state === 'thinking'}>
@@ -102,13 +99,6 @@
       </button>
     </div>
   {/if}
-
-  <div class="bottom-bar">
-    <button type="button" class="back-link" onclick={handleBack}>
-      ← Back to Overview
-    </button>
-    <span class="ipc-hint">IPC: dynamic-island.sock</span>
-  </div>
 </div>
 
 <style>
@@ -365,37 +355,16 @@
     flex: 0 0 80px;
   }
 
+  .agent-header-chip {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 7px;
+    border-radius: 9999px;
+  }
+
   .btn-reject:hover {
     background: rgba(239, 68, 68, 0.35);
-  }
-
-  /* Bottom bar */
-  .bottom-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-top: 2px;
-  }
-
-  .back-link {
-    background: none;
-    border: none;
-    color: var(--island-text-secondary, #9ca3af);
-    font-size: 11px;
-    cursor: pointer;
-    font-family: inherit;
-    padding: 2px 6px;
-    border-radius: 4px;
-    transition: color 0.15s ease;
-  }
-
-  .back-link:hover {
-    color: #ffffff;
-  }
-
-  .ipc-hint {
-    font-size: 9px;
-    color: var(--island-text-muted, #6b7280);
-    font-family: monospace;
   }
 </style>

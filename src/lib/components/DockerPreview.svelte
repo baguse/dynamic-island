@@ -304,22 +304,28 @@
   }
 
   .btn-icon-refresh {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 24px;
     height: 24px;
-    border-radius: 6px;
-    border: none;
-    background: rgba(255, 255, 255, 0.08);
+    border-radius: 50%;
+    border: 1px solid var(--island-card-border, rgba(255, 255, 255, 0.08));
+    background: var(--island-card-bg, rgba(255, 255, 255, 0.08));
     color: var(--island-text-secondary, #9ca3af);
     cursor: pointer;
-    transition: all 0.15s ease;
+    padding: 0;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
   }
 
   .btn-icon-refresh:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.16);
-    color: #ffffff;
+    background: var(--island-card-hover, rgba(255, 255, 255, 0.16));
+    border-color: var(--island-border-hover, rgba(255, 255, 255, 0.25));
+    color: var(--island-text-primary, #ffffff);
+  }
+
+  .btn-icon-refresh:active:not(:disabled) {
+    transform: scale(0.92);
   }
 
   .spinning {
@@ -343,6 +349,8 @@
     display: flex;
     gap: 6px;
     margin-bottom: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 
   .filter-chip {
@@ -358,6 +366,7 @@
     color: var(--island-text-secondary, #9ca3af);
     cursor: pointer;
     transition: all 0.15s ease;
+    white-space: nowrap;
   }
 
   .filter-chip:hover {
