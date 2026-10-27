@@ -1,9 +1,142 @@
 <script lang="ts">
   import IslandHeader from './IslandHeader.svelte';
   import { islandState } from '../state/island.svelte';
-  import type { IslandTheme } from '../types';
+  import type { IslandTheme, ModuleKey, IslandSettings } from '../types';
 
   const settings = $derived(islandState.settings);
+
+  const MODULE_DEFINITIONS: Record<ModuleKey, { label: string; icon: string; settingKey: keyof IslandSettings }> = {
+    media: { label: 'Media Player (MPRIS)', icon: '🎵', settingKey: 'show_media_in_pill' },
+    agent: { label: 'AI Agent Companion', icon: '🤖', settingKey: 'show_agent_in_pill' },
+    build: { label: 'Terminal Build Monitor', icon: '⚡', settingKey: 'show_build_in_pill' },
+    system: { label: 'CPU & RAM Telemetry', icon: '🖥️', settingKey: 'show_system_in_pill' },
+    git: { label: 'Git Repository & Branch', icon: '⎇', settingKey: 'show_git_in_pill' },
+    editor: { label: 'Code Editor Presence', icon: '⌨️', settingKey: 'show_editor_in_pill' },
+    ports: { label: 'Localhost & Ports Hub', icon: '🌐', settingKey: 'show_ports_in_pill' },
+    docker: { label: 'Docker Containers Hub', icon: '🐳', settingKey: 'show_docker_in_pill' },
+    mic: { label: 'Hardware & Audio (Mic & Volume)', icon: '🎧', settingKey: 'show_mic_in_pill' },
+    clipboard: { label: 'Quick Clipboard & Snippets', icon: '📋', settingKey: 'show_clipboard_in_pill' },
+    shelf: { label: 'Desktop Drop Shelf', icon: '📁', settingKey: 'show_shelf_in_pill' },
+  };
+
+  let listContainer = $state<HTMLElement | null>(null);
+  let draggedIndex = $state<number | null>(null);
+  let dragOverIndex = $state<number | null>(null);
+  let isPointerDragging = $state(false);
+
+  // Pointer-based drag (100% reliable across WebKitGTK / Linux / Tauri)
+  function handlePointerDown(e: PointerEvent, index: number) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    draggedIndex = index;
+    dragOverIndex = index;
+    isPointerDragging = true;
+    const target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
+  }
+
+  function handlePointerMove(e: PointerEvent) {
+    if (!isPointerDragging || draggedIndex === null || !listContainer) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const items = Array.from(listContainer.querySelectorAll('.module-order-item'));
+    const mouseY = e.clientY;
+    for (let i = 0; i < items.length; i++) {
+      const rect = items[i].getBoundingClientRect();
+      if (mouseY >= rect.top && mouseY <= rect.bottom) {
+        if (dragOverIndex !== i) {
+          dragOverIndex = i;
+        }
+        break;
+      }
+    }
+  }
+
+  function handlePointerUp(e: PointerEvent) {
+    if (!isPointerDragging) return;
+    e.stopPropagation();
+    try {
+      const target = e.currentTarget as HTMLElement;
+      target.releasePointerCapture(e.pointerId);
+    } catch {
+      // Ignored
+    }
+    isPointerDragging = false;
+    if (draggedIndex !== null && dragOverIndex !== null && draggedIndex !== dragOverIndex) {
+      const current = [...islandState.moduleOrder];
+      const [moved] = current.splice(draggedIndex, 1);
+      current.splice(dragOverIndex, 0, moved);
+      islandState.setModuleOrder(current);
+    }
+    draggedIndex = null;
+    dragOverIndex = null;
+  }
+
+  function handlePointerCancel() {
+    isPointerDragging = false;
+    draggedIndex = null;
+    dragOverIndex = null;
+  }
+
+  // HTML5 drag fallback
+  function handleDragStart(e: DragEvent, index: number) {
+    e.stopPropagation();
+    draggedIndex = index;
+    dragOverIndex = index;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(index));
+      e.dataTransfer.setData('application/x-dynamic-island-module', String(index));
+    }
+  }
+
+  function handleDragOver(e: DragEvent, index: number) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+    }
+    if (dragOverIndex !== index) {
+      dragOverIndex = index;
+    }
+  }
+
+  function handleDragLeave(e: DragEvent) {
+    e.stopPropagation();
+  }
+
+  function handleDrop(e: DragEvent, targetIndex: number) {
+    e.preventDefault();
+    e.stopPropagation();
+    const sourceIdx = draggedIndex !== null ? draggedIndex : parseInt(e.dataTransfer?.getData('text/plain') || '-1', 10);
+    if (sourceIdx >= 0 && sourceIdx !== targetIndex) {
+      const current = [...islandState.moduleOrder];
+      const [moved] = current.splice(sourceIdx, 1);
+      current.splice(targetIndex, 0, moved);
+      islandState.setModuleOrder(current);
+    }
+    draggedIndex = null;
+    dragOverIndex = null;
+  }
+
+  function handleDragEnd(e: DragEvent) {
+    e.stopPropagation();
+    draggedIndex = null;
+    dragOverIndex = null;
+  }
+
+  function handleMoveUp(index: number) {
+    islandState.moveModule(index, -1);
+  }
+
+  function handleMoveDown(index: number) {
+    islandState.moveModule(index, 1);
+  }
+
+  function handleResetOrder() {
+    islandState.resetModuleOrder();
+  }
 
   function handleThemeChange(theme: IslandTheme) {
     islandState.updateSettings({ theme });
@@ -35,7 +168,7 @@
     islandState.updateSettings({ top_margin: val });
   }
 
-  function handleToggleModule(module: 'system' | 'battery' | 'media' | 'build' | 'agent' | 'git' | 'editor' | 'ports' | 'docker' | 'mic' | 'shelf' | 'clipboard' | 'autostart') {
+  function handleToggleModule(module: ModuleKey | 'battery' | 'autostart') {
     if (module === 'system') {
       islandState.updateSettings({ show_system_in_pill: !settings.show_system_in_pill });
     } else if (module === 'battery') {
@@ -241,22 +374,111 @@
       </div>
     </div>
 
-    <!-- Section 3: Active Modules & Features -->
+    <!-- Section 3: Active Modules & Ordering -->
     <div class="settings-group">
-      <span class="group-title">Modules & Features</span>
-
-      <div class="setting-item">
-        <span class="setting-name">CPU & RAM Telemetry</span>
+      <div class="group-header">
+        <div class="group-title-col">
+          <span class="group-title">Modules & Ordering</span>
+          <span class="group-desc">Reorder with ▲ / ▼ or drag. Order applies to Overview & pill.</span>
+        </div>
         <button
           type="button"
-          class="toggle-switch"
-          class:checked={settings.show_system_in_pill}
-          onclick={() => handleToggleModule('system')}
-          aria-label="Toggle system telemetry module"
+          class="reset-order-btn"
+          onclick={handleResetOrder}
+          title="Restore default module order"
         >
-          <span class="toggle-thumb"></span>
+          Reset Order
         </button>
       </div>
+
+      <div class="module-order-list" role="list" bind:this={listContainer}>
+        {#each islandState.moduleOrder as modKey, index (modKey)}
+          {@const mod = MODULE_DEFINITIONS[modKey]}
+          {#if mod}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="module-order-item"
+              class:is-dragging={draggedIndex === index}
+              class:drag-over={dragOverIndex === index && draggedIndex !== index}
+              role="listitem"
+              draggable="true"
+              ondragstart={(e) => handleDragStart(e, index)}
+              ondragover={(e) => handleDragOver(e, index)}
+              ondragleave={handleDragLeave}
+              ondrop={(e) => handleDrop(e, index)}
+              ondragend={handleDragEnd}
+            >
+              <div class="module-item-left">
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div
+                  class="drag-handle"
+                  title="Drag to reorder"
+                  aria-hidden="true"
+                  onpointerdown={(e) => handlePointerDown(e, index)}
+                  onpointermove={handlePointerMove}
+                  onpointerup={handlePointerUp}
+                  onpointercancel={handlePointerCancel}
+                >
+                  <svg width="10" height="12" viewBox="0 0 10 16" fill="currentColor">
+                    <circle cx="2" cy="2" r="1.5"></circle>
+                    <circle cx="8" cy="2" r="1.5"></circle>
+                    <circle cx="2" cy="8" r="1.5"></circle>
+                    <circle cx="8" cy="8" r="1.5"></circle>
+                    <circle cx="2" cy="14" r="1.5"></circle>
+                    <circle cx="8" cy="14" r="1.5"></circle>
+                  </svg>
+                </div>
+
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div class="reorder-arrows" onpointerdown={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    class="arrow-btn"
+                    draggable="false"
+                    disabled={index === 0}
+                    onclick={() => handleMoveUp(index)}
+                    title="Move up"
+                    aria-label="Move {mod.label} up"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    class="arrow-btn"
+                    draggable="false"
+                    disabled={index === islandState.moduleOrder.length - 1}
+                    onclick={() => handleMoveDown(index)}
+                    title="Move down"
+                    aria-label="Move {mod.label} down"
+                  >
+                    ▼
+                  </button>
+                </div>
+
+                <span class="module-order-badge">{index + 1}</span>
+                <span class="module-icon">{mod.icon}</span>
+                <span class="setting-name">{mod.label}</span>
+              </div>
+
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div onpointerdown={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  class="toggle-switch"
+                  draggable="false"
+                  class:checked={Boolean(settings[mod.settingKey])}
+                  onclick={() => handleToggleModule(modKey)}
+                  aria-label="Toggle {mod.label}"
+                >
+                  <span class="toggle-thumb"></span>
+                </button>
+              </div>
+            </div>
+          {/if}
+        {/each}
+      </div>
+
+      <div class="system-toggles-divider"></div>
 
       <div class="setting-item">
         <span class="setting-name">Low Battery Warning (&lt; 20%)</span>
@@ -266,136 +488,6 @@
           class:checked={settings.show_battery_alert}
           onclick={() => handleToggleModule('battery')}
           aria-label="Toggle low battery alert"
-        >
-          <span class="toggle-thumb"></span>
-        </button>
-      </div>
-
-      <div class="setting-item">
-        <span class="setting-name">Media Player (MPRIS)</span>
-        <button
-          type="button"
-          class="toggle-switch"
-          class:checked={settings.show_media_in_pill}
-          onclick={() => handleToggleModule('media')}
-          aria-label="Toggle media player module"
-        >
-          <span class="toggle-thumb"></span>
-        </button>
-      </div>
-
-      <div class="setting-item">
-        <span class="setting-name">Terminal Build Monitor</span>
-        <button
-          type="button"
-          class="toggle-switch"
-          class:checked={settings.show_build_in_pill}
-          onclick={() => handleToggleModule('build')}
-          aria-label="Toggle terminal build monitor"
-        >
-          <span class="toggle-thumb"></span>
-        </button>
-      </div>
-
-      <div class="setting-item">
-        <span class="setting-name">AI Agent Companion</span>
-        <button
-          type="button"
-          class="toggle-switch"
-          class:checked={settings.show_agent_in_pill}
-          onclick={() => handleToggleModule('agent')}
-          aria-label="Toggle AI agent companion module"
-        >
-          <span class="toggle-thumb"></span>
-        </button>
-      </div>
-
-      <div class="setting-item">
-        <span class="setting-name">Git Repository & Branch</span>
-        <button
-          type="button"
-          class="toggle-switch"
-          class:checked={settings.show_git_in_pill}
-          onclick={() => handleToggleModule('git')}
-          aria-label="Toggle git repository module"
-        >
-          <span class="toggle-thumb"></span>
-        </button>
-      </div>
-
-      <div class="setting-item">
-        <span class="setting-name">Code Editor Presence (Cursor/VS Code)</span>
-        <button
-          type="button"
-          class="toggle-switch"
-          class:checked={settings.show_editor_in_pill}
-          onclick={() => handleToggleModule('editor')}
-          aria-label="Toggle code editor presence module"
-        >
-          <span class="toggle-thumb"></span>
-        </button>
-      </div>
-
-      <div class="setting-item">
-        <span class="setting-name">Localhost & Ports Hub</span>
-        <button
-          type="button"
-          class="toggle-switch"
-          class:checked={settings.show_ports_in_pill}
-          onclick={() => handleToggleModule('ports')}
-          aria-label="Toggle localhost & ports module"
-        >
-          <span class="toggle-thumb"></span>
-        </button>
-      </div>
-
-      <div class="setting-item">
-        <span class="setting-name">Docker Containers Hub</span>
-        <button
-          type="button"
-          class="toggle-switch"
-          class:checked={settings.show_docker_in_pill}
-          onclick={() => handleToggleModule('docker')}
-          aria-label="Toggle docker containers module"
-        >
-          <span class="toggle-thumb"></span>
-        </button>
-      </div>
-
-      <div class="setting-item">
-        <span class="setting-name">Hardware & Audio (Mic Mute & Output Switcher)</span>
-        <button
-          type="button"
-          class="toggle-switch"
-          class:checked={settings.show_mic_in_pill}
-          onclick={() => handleToggleModule('mic')}
-          aria-label="Toggle hardware & audio module"
-        >
-          <span class="toggle-thumb"></span>
-        </button>
-      </div>
-
-      <div class="setting-item">
-        <span class="setting-name">Desktop Drop Shelf (Drag & Drop Zone)</span>
-        <button
-          type="button"
-          class="toggle-switch"
-          class:checked={settings.show_shelf_in_pill}
-          onclick={() => handleToggleModule('shelf')}
-          aria-label="Toggle desktop drop shelf module"
-        >
-          <span class="toggle-thumb"></span>
-        </button>
-      </div>
-
-      <div class="setting-item">
-        <span class="setting-name">Quick Clipboard History & Snippets</span>
-        <button
-          type="button"
-          class="toggle-switch"
-          class:checked={settings.show_clipboard_in_pill}
-          onclick={() => handleToggleModule('clipboard')}
-          aria-label="Toggle clipboard history module"
         >
           <span class="toggle-thumb"></span>
         </button>
@@ -623,6 +715,172 @@
     letter-spacing: 0.04em;
     color: var(--island-accent, #3b82f6);
     margin-bottom: 2px;
+  }
+
+  .group-title-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .group-desc {
+    font-size: 9.5px;
+    color: var(--island-text-muted, #94a3b8);
+    line-height: 1.25;
+  }
+
+  .reset-order-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--island-text-secondary, #cbd5e1);
+    font-size: 9.5px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    align-self: flex-start;
+  }
+
+  .reset-order-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+
+  .module-order-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+  }
+
+  .module-order-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    transition: all 0.15s ease;
+    user-select: none;
+  }
+
+  .module-order-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .module-order-item.is-dragging {
+    opacity: 0.4;
+    border: 1px dashed var(--island-accent, #3b82f6);
+  }
+
+  .module-order-item.drag-over {
+    border-color: var(--island-accent, #3b82f6);
+    background: rgba(59, 130, 246, 0.18);
+    transform: translateY(2px) scale(1.01);
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+  }
+
+  .module-item-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    color: var(--island-text-muted, #94a3b8);
+    opacity: 0.6;
+    padding: 3px 4px;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: opacity 0.15s ease, color 0.15s ease;
+  }
+
+  .drag-handle:hover {
+    opacity: 1;
+    color: #ffffff;
+  }
+
+  .drag-handle:active {
+    cursor: grabbing;
+  }
+
+  .reorder-arrows {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .arrow-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    width: 14px;
+    height: 9px;
+    line-height: 9px;
+    font-size: 7.5px;
+    color: var(--island-text-muted, #94a3b8);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2px;
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+
+  .arrow-btn:hover:not(:disabled) {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .arrow-btn:disabled {
+    opacity: 0.18;
+    cursor: default;
+  }
+
+  .module-order-badge {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--island-text-muted, #94a3b8);
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+    width: 15px;
+    height: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .module-icon {
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    flex-shrink: 0;
+  }
+
+  .system-toggles-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 4px 0;
   }
 
   .setting-item {

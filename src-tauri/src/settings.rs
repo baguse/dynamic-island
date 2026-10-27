@@ -10,6 +10,22 @@ fn default_true() -> bool {
     true
 }
 
+fn default_module_order() -> Vec<String> {
+    vec![
+        "media".to_string(),
+        "agent".to_string(),
+        "build".to_string(),
+        "system".to_string(),
+        "git".to_string(),
+        "editor".to_string(),
+        "ports".to_string(),
+        "docker".to_string(),
+        "mic".to_string(),
+        "clipboard".to_string(),
+        "shelf".to_string(),
+    ]
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IslandSettings {
     #[serde(default = "default_theme")]
@@ -38,6 +54,8 @@ pub struct IslandSettings {
     pub show_shelf_in_pill: bool,
     #[serde(default = "default_true")]
     pub show_clipboard_in_pill: bool,
+    #[serde(default = "default_module_order")]
+    pub module_order: Vec<String>,
     #[serde(default)]
     pub watched_repo_path: Option<String>,
     pub autostart_enabled: bool,
@@ -64,6 +82,7 @@ impl Default for IslandSettings {
             show_mic_in_pill: true,
             show_shelf_in_pill: true,
             show_clipboard_in_pill: true,
+            module_order: default_module_order(),
             watched_repo_path: None,
             autostart_enabled: false,
         }
@@ -185,5 +204,22 @@ mod tests {
         assert_eq!(s.top_margin, 12.0);
         assert!(s.show_ports_in_pill);
         assert!(s.show_docker_in_pill);
+        assert_eq!(s.module_order.len(), 11);
+        assert_eq!(s.module_order[0], "media");
+    }
+
+    #[test]
+    fn test_module_order_backwards_compatibility() {
+        let json = r#"{"theme":"neon","hover_expand_enabled":true,"hover_delay_ms":200,"leave_delay_ms":400,"inactivity_timeout_s":10,"top_margin":10.0,"show_system_in_pill":true,"show_battery_alert":true,"show_media_in_pill":true,"show_build_in_pill":true,"show_agent_in_pill":true,"autostart_enabled":false}"#;
+        let s: IslandSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(s.module_order.len(), 11);
+        assert_eq!(s.module_order[0], "media");
+    }
+
+    #[test]
+    fn test_custom_module_order() {
+        let json = r#"{"theme":"dark","hover_expand_enabled":true,"hover_delay_ms":220,"leave_delay_ms":450,"inactivity_timeout_s":12,"top_margin":12.0,"show_system_in_pill":true,"show_battery_alert":true,"show_media_in_pill":true,"show_build_in_pill":true,"show_agent_in_pill":true,"module_order":["shelf","clipboard","git"],"autostart_enabled":false}"#;
+        let s: IslandSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(s.module_order, vec!["shelf", "clipboard", "git"]);
     }
 }

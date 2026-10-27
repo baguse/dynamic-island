@@ -190,7 +190,7 @@ impl DevManager {
             cvar.notify_all();
         }
 
-        if !settings.show_agent_in_pill {
+        if app_handle.is_some() && !settings.show_agent_in_pill {
             let mut agent = self.agent.lock().unwrap();
             *agent = AgentStatus::default();
             drop(agent);

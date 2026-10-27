@@ -1,27 +1,29 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type {
-  IslandMode,
-  IslandDimensions,
-  MediaMetadata,
-  NotificationItem,
-  MonitorInfo,
-  SystemTelemetry,
-  AgentStatus,
-  BuildStatus,
-  DevStatusPayload,
-  IslandSettings,
-  IslandTheme,
-  GitStatus,
-  EditorPresence,
-  PortInfo,
-  DockerContainerInfo,
-  AudioStatus,
-  AudioOutputDevice,
-  ClipboardData,
-  ClipboardItem,
-  SnippetItem,
-  ShelfItem,
+import {
+  DEFAULT_MODULE_ORDER,
+  type IslandMode,
+  type IslandDimensions,
+  type MediaMetadata,
+  type NotificationItem,
+  type MonitorInfo,
+  type SystemTelemetry,
+  type AgentStatus,
+  type BuildStatus,
+  type DevStatusPayload,
+  type IslandSettings,
+  type IslandTheme,
+  type GitStatus,
+  type EditorPresence,
+  type PortInfo,
+  type DockerContainerInfo,
+  type AudioStatus,
+  type AudioOutputDevice,
+  type ClipboardData,
+  type ClipboardItem,
+  type SnippetItem,
+  type ShelfItem,
+  type ModuleKey,
 } from '../types';
 
 export const DEFAULT_SETTINGS: IslandSettings = {
@@ -43,6 +45,7 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   show_mic_in_pill: true,
   show_shelf_in_pill: true,
   show_clipboard_in_pill: true,
+  module_order: [...DEFAULT_MODULE_ORDER],
   watched_repo_path: null,
   autostart_enabled: false,
 };
@@ -235,13 +238,42 @@ class IslandStore {
     };
   }
 
+  get moduleOrder(): ModuleKey[] {
+    const saved = this.settings.module_order || [];
+    const knownKeys = DEFAULT_MODULE_ORDER as readonly string[];
+    const result: ModuleKey[] = [];
+    for (const key of saved) {
+      if (knownKeys.includes(key) && !result.includes(key as ModuleKey)) {
+        result.push(key as ModuleKey);
+      }
+    }
+    for (const key of DEFAULT_MODULE_ORDER) {
+      if (!result.includes(key)) {
+        result.push(key);
+      }
+    }
+    return result;
+  }
+
+  get activePillModule(): ModuleKey | null {
+    for (const key of this.moduleOrder) {
+      if (key === 'build' && this.hasActiveBuild && this.settings.show_build_in_pill) return 'build';
+      if (key === 'agent' && this.hasActiveAgent) return 'agent';
+      if (key === 'media' && this.hasActiveMedia && this.settings.show_media_in_pill) return 'media';
+      if (key === 'git' && this.hasActiveGit && this.settings.show_git_in_pill) return 'git';
+      if (key === 'editor' && this.hasActiveEditor && this.settings.show_editor_in_pill) return 'editor';
+    }
+    return null;
+  }
+
   get targetWidth(): number {
     if (this.mode === 'idle' || this.isCollapsing) {
-      if (this.hasActiveBuild) return 330;
-      if (this.hasActiveAgent) return 340;
-      if (this.hasActiveMedia) return 330;
-      if (this.hasActiveGit && this.settings.show_git_in_pill) return 330;
-      if (this.hasActiveEditor && this.settings.show_editor_in_pill) return 340;
+      const active = this.activePillModule;
+      if (active === 'agent') return 340;
+      if (active === 'editor') return 340;
+      if (active === 'build') return 330;
+      if (active === 'media') return 330;
+      if (active === 'git') return 330;
       if (this.isMicMuted && this.settings.show_mic_in_pill) return 320;
       if (this.shelfCount > 0 && this.settings.show_shelf_in_pill) return 320;
       return 280;
@@ -862,6 +894,23 @@ class IslandStore {
       console.debug('resetSettings note:', err);
     }
     await this.syncNativeWindow();
+  }
+
+  async setModuleOrder(order: string[]) {
+    await this.updateSettings({ module_order: order });
+  }
+
+  async moveModule(index: number, direction: -1 | 1) {
+    const current = [...this.moduleOrder];
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= current.length) return;
+    const [moved] = current.splice(index, 1);
+    current.splice(targetIndex, 0, moved);
+    await this.setModuleOrder(current);
+  }
+
+  async resetModuleOrder() {
+    await this.setModuleOrder([...DEFAULT_MODULE_ORDER]);
   }
 
   async refreshTelemetry() {

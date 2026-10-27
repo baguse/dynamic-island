@@ -124,6 +124,22 @@ export interface GitStatus {
 
 export type IslandTheme = 'dark' | 'light' | 'neon' | 'anime';
 
+export const DEFAULT_MODULE_ORDER = [
+  'media',
+  'agent',
+  'build',
+  'system',
+  'git',
+  'editor',
+  'ports',
+  'docker',
+  'mic',
+  'clipboard',
+  'shelf',
+] as const;
+
+export type ModuleKey = (typeof DEFAULT_MODULE_ORDER)[number];
+
 export interface IslandSettings {
   theme: IslandTheme;
   hover_expand_enabled: boolean;
@@ -143,6 +159,7 @@ export interface IslandSettings {
   show_mic_in_pill: boolean;
   show_shelf_in_pill: boolean;
   show_clipboard_in_pill: boolean;
+  module_order: string[];
   watched_repo_path?: string | null;
   autostart_enabled: boolean;
 }
