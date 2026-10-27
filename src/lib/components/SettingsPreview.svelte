@@ -616,6 +616,46 @@
           </div>
         </div>
       {/if}
+
+      <!-- Equalizer Waves Style -->
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-name">Pill Equalizer Waveform</span>
+          <span class="setting-desc">Animated audio-reactive waves next to track name in pill</span>
+        </div>
+        <div class="position-segmented" style="max-width: 240px;">
+          <button
+            type="button"
+            class="position-btn"
+            class:active={settings.equalizer_style === 'bars'}
+            onclick={() => islandState.updateSettings({ equalizer_style: 'bars' })}
+            title="Neon Spectrum Equalizer Bars"
+          >
+            <span class="pos-icon">📊</span>
+            <span class="pos-label">Bars</span>
+          </button>
+          <button
+            type="button"
+            class="position-btn"
+            class:active={settings.equalizer_style === 'wave'}
+            onclick={() => islandState.updateSettings({ equalizer_style: 'wave' })}
+            title="Fluid Sine Waveform (Apple Style)"
+          >
+            <span class="pos-icon">〰️</span>
+            <span class="pos-label">Wave</span>
+          </button>
+          <button
+            type="button"
+            class="position-btn"
+            class:active={settings.equalizer_style === 'dots'}
+            onclick={() => islandState.updateSettings({ equalizer_style: 'dots' })}
+            title="Minimalist Pulsing Dots"
+          >
+            <span class="pos-icon">•••</span>
+            <span class="pos-label">Dots</span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Section 4: System Integration -->

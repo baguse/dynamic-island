@@ -1,3 +1,4 @@
+mod audio_monitor;
 mod clipboard;
 mod dev_hub;
 mod dev_ipc;
@@ -907,6 +908,9 @@ pub fn run() {
                 let init_settings = settings::load_settings_from_disk();
                 let _ = resize_and_center_island(window, state, 340.0, 52.0, init_settings.top_margin);
             }
+
+            // Background worker: PipeWire / PulseAudio Real-Time Equalizer Spectrum Monitor
+            audio_monitor::start_audio_monitor(app.handle().clone(), Arc::new(AtomicBool::new(true)));
 
             // Background worker: MPRIS media & System Telemetry updates
             let handle = app.handle().clone();

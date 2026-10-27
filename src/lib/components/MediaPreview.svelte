@@ -1,6 +1,7 @@
 <script lang="ts">
   import IslandHeader from './IslandHeader.svelte';
   import MediaCompanion from './MediaCompanion.svelte';
+  import AudioEqualizer from './AudioEqualizer.svelte';
   import { islandState } from '../state/island.svelte';
 
   const media = $derived(islandState.currentMedia);
@@ -78,7 +79,10 @@
       </div>
 
       <div class="track-info">
-        <h4 class="track-title" title={media.title}>{media.title}</h4>
+        <div class="track-title-row">
+          <h4 class="track-title" title={media.title}>{media.title}</h4>
+          <AudioEqualizer size="sm" isPlaying={islandState.isPlaying} />
+        </div>
         <p class="track-artist" title={media.artist}>{media.artist}</p>
         {#if media.album}
           <p class="track-album" title={media.album}>{media.album}</p>
@@ -250,6 +254,13 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    overflow: hidden;
+  }
+
+  .track-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     overflow: hidden;
   }
 

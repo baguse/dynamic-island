@@ -34,6 +34,10 @@ fn default_companion_style() -> String {
     "vinyl".to_string()
 }
 
+fn default_equalizer_style() -> String {
+    "bars".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IslandSettings {
     #[serde(default = "default_theme")]
@@ -76,6 +80,8 @@ pub struct IslandSettings {
     pub media_companion_path: Option<String>,
     #[serde(default = "default_companion_style")]
     pub media_companion_style: String,
+    #[serde(default = "default_equalizer_style")]
+    pub equalizer_style: String,
     pub autostart_enabled: bool,
 }
 
@@ -107,6 +113,7 @@ impl Default for IslandSettings {
             show_media_companion: true,
             media_companion_path: None,
             media_companion_style: "vinyl".to_string(),
+            equalizer_style: "bars".to_string(),
             autostart_enabled: false,
         }
     }
@@ -231,6 +238,7 @@ mod tests {
         assert_eq!(s.module_order[0], "media");
         assert!(s.show_media_companion);
         assert_eq!(s.media_companion_style, "vinyl");
+        assert_eq!(s.equalizer_style, "bars");
     }
 
     #[test]
@@ -241,6 +249,7 @@ mod tests {
         assert_eq!(s.module_order[0], "media");
         assert!(s.show_media_companion);
         assert_eq!(s.media_companion_style, "vinyl");
+        assert_eq!(s.equalizer_style, "bars");
     }
 
     #[test]

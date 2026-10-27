@@ -17,6 +17,7 @@
   import HardwarePreview from './HardwarePreview.svelte';
   import ClipboardPreview from './ClipboardPreview.svelte';
   import DropShelfPreview from './DropShelfPreview.svelte';
+  import AudioEqualizer from './AudioEqualizer.svelte';
 
   const media = $derived(islandState.currentMedia);
   const telemetry = $derived(islandState.telemetry);
@@ -349,11 +350,7 @@
         <!-- Compact Pill with Media Controls -->
         <div class="pill-content media-pill">
           <div class="pill-left">
-            <div class="equalizer" class:paused={!islandState.isPlaying} aria-hidden="true">
-              <span class="bar bar-1"></span>
-              <span class="bar bar-2"></span>
-              <span class="bar bar-3"></span>
-            </div>
+            <AudioEqualizer size="sm" isPlaying={islandState.isPlaying} />
             <div class="pill-media-text">
               <span class="pill-track-title">{media.title}</span>
               <span class="pill-track-artist">{media.artist}</span>
@@ -592,11 +589,7 @@
                         </span>
                       </div>
                       {#if islandState.isPlaying}
-                        <div class="mini-equalizer" aria-hidden="true">
-                          <span class="mini-bar"></span>
-                          <span class="mini-bar"></span>
-                          <span class="mini-bar"></span>
-                        </div>
+                        <AudioEqualizer size="sm" isPlaying={true} />
                       {/if}
                     </button>
 
@@ -1166,43 +1159,6 @@
     font-variant-numeric: tabular-nums;
     font-size: 9.5px;
     padding: 2px 7px;
-  }
-
-  /* Equalizer Animation in Pill */
-  .equalizer {
-    display: flex;
-    align-items: flex-end;
-    gap: 2px;
-    height: 14px;
-    width: 12px;
-    flex-shrink: 0;
-  }
-
-  .equalizer .bar {
-    width: 2px;
-    background-color: var(--island-accent, #3b82f6);
-    border-radius: 1px;
-  }
-
-  .equalizer:not(.paused) .bar-1 {
-    animation: eqBounce 0.8s ease-in-out infinite alternate;
-  }
-  .equalizer:not(.paused) .bar-2 {
-    animation: eqBounce 1.1s ease-in-out infinite 0.2s alternate;
-  }
-  .equalizer:not(.paused) .bar-3 {
-    animation: eqBounce 0.9s ease-in-out infinite 0.4s alternate;
-  }
-
-  .equalizer.paused .bar {
-    height: 4px !important;
-    opacity: 0.6;
-  }
-
-  @keyframes eqBounce {
-    0% { height: 3px; }
-    50% { height: 14px; }
-    100% { height: 6px; }
   }
 
   .pill-media-text {

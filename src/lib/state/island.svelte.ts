@@ -24,6 +24,7 @@ import {
   type SnippetItem,
   type ShelfItem,
   type ModuleKey,
+  type AudioSpectrumData,
 } from '../types';
 
 export const DEFAULT_SETTINGS: IslandSettings = {
@@ -52,6 +53,7 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   show_media_companion: true,
   media_companion_path: null,
   media_companion_style: 'vinyl',
+  equalizer_style: 'bars',
   autostart_enabled: false,
 };
 
@@ -86,6 +88,10 @@ class IslandStore {
   private collapseAnimationTimer: ReturnType<typeof setTimeout> | null = null;
   private expandAnimationTimer: ReturnType<typeof setTimeout> | null = null;
   currentMedia = $state<MediaMetadata | null>(null);
+  audioSpectrum = $state<AudioSpectrumData>({
+    bands: [0, 0, 0, 0, 0],
+    energy: 0,
+  });
   activeNotification = $state<NotificationItem | null>(null);
   monitors = $state<MonitorInfo[]>([]);
   telemetry = $state<SystemTelemetry | null>(null);
@@ -168,6 +174,7 @@ class IslandStore {
   }
 
   private unlistenMedia: UnlistenFn | null = null;
+  private unlistenAudioSpectrum: UnlistenFn | null = null;
   private unlistenNotification: UnlistenFn | null = null;
   private unlistenTelemetry: UnlistenFn | null = null;
   private unlistenAgent: UnlistenFn | null = null;
@@ -1306,6 +1313,20 @@ class IslandStore {
       console.debug('Failed to register media listener:', err);
     }
 
+    // 3b. Live PipeWire / PulseAudio spectrum listener
+    try {
+      this.unlistenAudioSpectrum = await listen<AudioSpectrumData>(
+        'audio-spectrum',
+        (event) => {
+          if (event.payload) {
+            this.audioSpectrum = event.payload;
+          }
+        }
+      );
+    } catch (err) {
+      console.debug('Failed to register audio-spectrum listener:', err);
+    }
+
     // 4. Listen for desktop notifications
     try {
       this.unlistenNotification = await listen<NotificationItem>(
@@ -1528,6 +1549,10 @@ class IslandStore {
     if (this.unlistenMedia) {
       this.unlistenMedia();
       this.unlistenMedia = null;
+    }
+    if (this.unlistenAudioSpectrum) {
+      this.unlistenAudioSpectrum();
+      this.unlistenAudioSpectrum = null;
     }
     if (this.unlistenNotification) {
       this.unlistenNotification();

@@ -48,6 +48,11 @@ export interface DevStatusPayload {
   editor?: EditorPresence | null;
 }
 
+export interface AudioSpectrumData {
+  bands: [number, number, number, number, number];
+  energy: number;
+}
+
 export interface MediaMetadata {
   player_name: string;
   title: string;
@@ -177,6 +182,7 @@ export interface IslandSettings {
   show_media_companion: boolean;
   media_companion_path?: string | null;
   media_companion_style?: 'vinyl' | 'cassette';
+  equalizer_style?: 'bars' | 'wave' | 'dots';
   autostart_enabled: boolean;
 }
 
