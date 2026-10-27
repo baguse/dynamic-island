@@ -1,4 +1,4 @@
-export type IslandMode = 'idle' | 'expanded' | 'agent' | 'media' | 'notification' | 'system' | 'settings' | 'git' | 'editor' | 'ports' | 'docker';
+export type IslandMode = 'idle' | 'expanded' | 'agent' | 'media' | 'notification' | 'system' | 'settings' | 'git' | 'editor' | 'ports' | 'docker' | 'hardware' | 'clipboard' | 'shelf';
 
 export interface IslandDimensions {
   width: number;
@@ -140,6 +140,9 @@ export interface IslandSettings {
   show_editor_in_pill: boolean;
   show_ports_in_pill: boolean;
   show_docker_in_pill: boolean;
+  show_mic_in_pill: boolean;
+  show_shelf_in_pill: boolean;
+  show_clipboard_in_pill: boolean;
   watched_repo_path?: string | null;
   autostart_enabled: boolean;
 }
@@ -162,4 +165,57 @@ export interface DockerContainerInfo {
   status: string;
   ports: string;
   is_running: boolean;
+}
+
+export interface AudioOutputDevice {
+  id: string;
+  name: string;
+  description: string;
+  device_type: 'speakers' | 'headphones' | 'other';
+  is_active: boolean;
+}
+
+export interface AudioStatus {
+  mic_muted: boolean;
+  mic_volume: number;
+  output_muted: boolean;
+  output_volume: number;
+  active_output_name: string;
+  active_output_type: 'speakers' | 'headphones' | 'other';
+  outputs: AudioOutputDevice[];
+}
+
+export interface ClipboardItem {
+  id: string;
+  content: string;
+  preview: string;
+  timestamp: number;
+  char_count: number;
+  line_count: number;
+  is_snippet?: boolean;
+}
+
+export interface SnippetItem {
+  id: string;
+  title: string;
+  content: string;
+  category: string;
+  created_at: number;
+}
+
+export interface ClipboardData {
+  history: ClipboardItem[];
+  snippets: SnippetItem[];
+}
+
+export interface ShelfItem {
+  id: string;
+  name: string;
+  path?: string | null;
+  text_content?: string | null;
+  item_type: 'image' | 'code' | 'archive' | 'doc' | 'file' | 'url' | 'text';
+  size_bytes?: number | null;
+  size_formatted?: string | null;
+  extension?: string | null;
+  timestamp: number;
 }

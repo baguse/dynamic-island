@@ -1,6 +1,9 @@
+mod clipboard;
 mod dev_hub;
 mod dev_ipc;
+mod drop_shelf;
 mod git;
+mod hardware;
 mod media;
 mod settings;
 mod system;
@@ -15,6 +18,8 @@ pub struct AppState {
     pub current_monitor_name: Mutex<Option<String>>,
     pub system_tracker: Mutex<system::SystemTracker>,
     pub dev_manager: Arc<dev_ipc::DevManager>,
+    pub clipboard_manager: Arc<clipboard::ClipboardManager>,
+    pub shelf_manager: Arc<drop_shelf::ShelfManager>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -473,6 +478,197 @@ async fn open_url_in_browser(url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?
 }
 
+// Hardware & Audio commands
+#[tauri::command]
+async fn get_audio_status() -> Result<hardware::AudioStatus, String> {
+    tauri::async_runtime::spawn_blocking(hardware::get_audio_status)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn toggle_mic_mute() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(hardware::toggle_mic_mute)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn set_mic_volume(volume: u32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || hardware::set_mic_volume(volume))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn set_output_volume(volume: u32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || hardware::set_output_volume(volume))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn toggle_output_mute() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(hardware::toggle_output_mute)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn set_audio_output(target_id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || hardware::set_audio_output(&target_id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+// Clipboard & Snippets commands
+#[tauri::command]
+fn get_clipboard_state(state: State<'_, AppState>) -> Result<clipboard::ClipboardData, String> {
+    Ok(state.clipboard_manager.get_state())
+}
+
+#[tauri::command]
+fn get_clipboard_data(state: State<'_, AppState>) -> Result<clipboard::ClipboardData, String> {
+    Ok(state.clipboard_manager.get_state())
+}
+
+#[tauri::command]
+async fn copy_to_clipboard(
+    state: State<'_, AppState>,
+    text: Option<String>,
+    content: Option<String>,
+) -> Result<(), String> {
+    let to_copy = text.or(content).unwrap_or_default();
+    let mgr = state.clipboard_manager.clone();
+    tauri::async_runtime::spawn_blocking(move || mgr.copy_text(&to_copy))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn add_snippet(
+    state: State<'_, AppState>,
+    title: String,
+    content: String,
+    category: String,
+) -> Result<(), String> {
+    state.clipboard_manager.add_snippet(title, content, category)
+}
+
+#[tauri::command]
+fn add_pinned_snippet(
+    state: State<'_, AppState>,
+    title: String,
+    content: String,
+    category: String,
+) -> Result<(), String> {
+    state.clipboard_manager.add_snippet(title, content, category)
+}
+
+#[tauri::command]
+fn delete_snippet(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.clipboard_manager.delete_snippet(&id)
+}
+
+#[tauri::command]
+fn delete_pinned_snippet(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.clipboard_manager.delete_snippet(&id)
+}
+
+#[tauri::command]
+fn delete_clipboard_item(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.clipboard_manager.delete_history_item(&id)
+}
+
+#[tauri::command]
+fn clear_clipboard_history(state: State<'_, AppState>) -> Result<(), String> {
+    state.clipboard_manager.clear_history()
+}
+
+// Drop Shelf commands
+#[tauri::command]
+fn get_shelf_items(state: State<'_, AppState>) -> Result<Vec<drop_shelf::ShelfItem>, String> {
+    Ok(state.shelf_manager.get_items())
+}
+
+#[tauri::command]
+async fn add_shelf_paths(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<Vec<drop_shelf::ShelfItem>, String> {
+    let mgr = state.shelf_manager.clone();
+    tauri::async_runtime::spawn_blocking(move || mgr.add_paths(paths))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn add_shelf_text(
+    state: State<'_, AppState>,
+    text: String,
+    title: Option<String>,
+) -> Result<drop_shelf::ShelfItem, String> {
+    state.shelf_manager.add_text_or_url(text, title)
+}
+
+#[tauri::command]
+fn remove_shelf_item(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.shelf_manager.remove_item(&id)
+}
+
+#[tauri::command]
+fn clear_shelf(state: State<'_, AppState>) -> Result<(), String> {
+    state.shelf_manager.clear()
+}
+
+#[tauri::command]
+async fn open_shelf_item_in_file_manager(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    let mgr = state.shelf_manager.clone();
+    tauri::async_runtime::spawn_blocking(move || mgr.open_in_file_manager(&path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn copy_shelf_file_to_file_manager(path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        // Set x-special/gnome-copied-files: "copy\nfile://{path}" for Nemo/GNOME paste
+        let payload = format!("copy\nfile://{}", path);
+        let _ = std::process::Command::new("xclip")
+            .args(["-selection", "clipboard", "-t", "x-special/gnome-copied-files"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                use std::io::Write;
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(payload.as_bytes());
+                }
+                child.wait()
+            });
+
+        // Also set text/uri-list
+        let uri_payload = format!("file://{}\r\n", path);
+        let _ = std::process::Command::new("xclip")
+            .args(["-selection", "clipboard", "-t", "text/uri-list"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                use std::io::Write;
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(uri_payload.as_bytes());
+                }
+                child.wait()
+            });
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
@@ -484,14 +680,22 @@ pub fn run() {
     }
 
     let dev_manager = Arc::new(dev_ipc::DevManager::new());
+    let clipboard_manager = clipboard::ClipboardManager::new();
+    let shelf_manager = drop_shelf::ShelfManager::new();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_drag::init())
         .manage(AppState {
             current_monitor_name: Mutex::new(None),
             system_tracker: Mutex::new(system::SystemTracker::new()),
             dev_manager: dev_manager.clone(),
+            clipboard_manager,
+            shelf_manager,
         })
         .setup(move |app| {
+            let state = app.state::<AppState>();
+            state.clipboard_manager.set_app_handle(app.handle().clone());
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -534,8 +738,15 @@ pub fn run() {
                         last_media_status = current;
                     }
 
-                    // 2. System Telemetry (every ~2.4s = 3 iterations)
+                    // 2. Audio status check (every ~1.6s = 2 iterations)
                     counter += 1;
+                    if counter % 2 == 0 {
+                        if let Ok(audio_status) = hardware::get_audio_status() {
+                            let _ = handle.emit("audio-status-change", &audio_status);
+                        }
+                    }
+
+                    // 3. System Telemetry (every ~2.4s = 3 iterations)
                     if counter % 3 == 0 {
                         if let Some(state) = handle.try_state::<AppState>() {
                             if let Ok(mut tracker) = state.system_tracker.lock() {
@@ -545,7 +756,7 @@ pub fn run() {
                         }
                     }
 
-                    // 3. Git Status check (every ~3.2s = 4 iterations)
+                    // 4. Git Status check (every ~3.2s = 4 iterations)
                     if counter % 4 == 0 {
                         if let Some(state) = handle.try_state::<AppState>() {
                             let settings = settings::load_settings_from_disk();
@@ -595,6 +806,28 @@ pub fn run() {
             docker_stop_container,
             docker_start_container,
             open_url_in_browser,
+            get_audio_status,
+            toggle_mic_mute,
+            set_mic_volume,
+            set_output_volume,
+            toggle_output_mute,
+            set_audio_output,
+            get_clipboard_state,
+            get_clipboard_data,
+            copy_to_clipboard,
+            add_pinned_snippet,
+            add_snippet,
+            delete_pinned_snippet,
+            delete_snippet,
+            delete_clipboard_item,
+            clear_clipboard_history,
+            get_shelf_items,
+            add_shelf_paths,
+            add_shelf_text,
+            remove_shelf_item,
+            clear_shelf,
+            open_shelf_item_in_file_manager,
+            copy_shelf_file_to_file_manager,
         ])
         .run(tauri::generate_context!())
         .expect("error while running dynamic-island application");

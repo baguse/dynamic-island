@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
+  import { getCurrentWebview } from '@tauri-apps/api/webview';
+  import type { UnlistenFn } from '@tauri-apps/api/event';
   import { islandState } from '../state/island.svelte';
   import IslandHeader from './IslandHeader.svelte';
   import AgentPreview from './AgentPreview.svelte';
@@ -10,6 +13,9 @@
   import EditorPreview from './EditorPreview.svelte';
   import PortsPreview from './PortsPreview.svelte';
   import DockerPreview from './DockerPreview.svelte';
+  import HardwarePreview from './HardwarePreview.svelte';
+  import ClipboardPreview from './ClipboardPreview.svelte';
+  import DropShelfPreview from './DropShelfPreview.svelte';
 
   const media = $derived(islandState.currentMedia);
   const telemetry = $derived(islandState.telemetry);
@@ -19,9 +25,80 @@
   const editor = $derived(islandState.editor);
   const hasActiveEditor = $derived(islandState.hasActiveEditor);
   const settings = $derived(islandState.settings);
+  const isMicMuted = $derived(islandState.isMicMuted);
+  const shelfCount = $derived(islandState.shelfCount);
+  const clipboardCount = $derived(islandState.clipboardHistoryCount);
   const activePanelMode = $derived(
     islandState.activePanel || (islandState.mode !== 'idle' ? islandState.mode : islandState.previousMode)
   );
+
+  let unlistenDragDrop: UnlistenFn | null = null;
+  let isSurfaceDragOver = $state(false);
+
+  onMount(async () => {
+    try {
+      unlistenDragDrop = await getCurrentWebview().onDragDropEvent(async (event) => {
+        if (event.payload.type === 'enter' || event.payload.type === 'over') {
+          isSurfaceDragOver = true;
+        } else if (event.payload.type === 'leave') {
+          isSurfaceDragOver = false;
+        } else if (event.payload.type === 'drop') {
+          isSurfaceDragOver = false;
+          if (event.payload.paths && event.payload.paths.length > 0) {
+            await islandState.addShelfPaths(event.payload.paths);
+            await islandState.openShelf();
+          }
+        }
+      });
+    } catch (err) {
+      console.debug('Native drag-drop listener registration note:', err);
+    }
+  });
+
+  onDestroy(() => {
+    if (unlistenDragDrop) {
+      unlistenDragDrop();
+      unlistenDragDrop = null;
+    }
+  });
+
+  function handleSurfaceDragOver(e: DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+    isSurfaceDragOver = true;
+  }
+
+  function handleSurfaceDragLeave(e: DragEvent) {
+    e.preventDefault();
+    isSurfaceDragOver = false;
+  }
+
+  async function handleSurfaceDrop(e: DragEvent) {
+    e.preventDefault();
+    isSurfaceDragOver = false;
+    if (!e.dataTransfer) return;
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const paths: string[] = [];
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        const p = (e.dataTransfer.files[i] as any).path;
+        if (p) paths.push(p);
+      }
+      if (paths.length > 0) {
+        await islandState.addShelfPaths(paths);
+        await islandState.openShelf();
+        return;
+      }
+    }
+
+    const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list');
+    if (text) {
+      await islandState.addShelfText(text);
+      await islandState.openShelf();
+    }
+  }
 
   function handleSurfaceClick(e: MouseEvent) {
     if (islandState.mode === 'idle' || islandState.isCollapsing) {
@@ -81,6 +158,26 @@
     islandState.openDocker();
   }
 
+  function handleOpenHardware(e: MouseEvent) {
+    e.stopPropagation();
+    islandState.openHardware();
+  }
+
+  function handleOpenClipboard(e: MouseEvent) {
+    e.stopPropagation();
+    islandState.openClipboard();
+  }
+
+  function handleOpenShelf(e: MouseEvent) {
+    e.stopPropagation();
+    islandState.openShelf();
+  }
+
+  function handleToggleMic(e: MouseEvent) {
+    e.stopPropagation();
+    islandState.toggleMicMute();
+  }
+
   function handleTogglePlay(e: MouseEvent) {
     e.stopPropagation();
     islandState.togglePlayPause();
@@ -119,6 +216,10 @@
   class:editor={islandState.mode === 'editor' && !islandState.isCollapsing}
   class:ports={islandState.mode === 'ports' && !islandState.isCollapsing}
   class:docker={islandState.mode === 'docker' && !islandState.isCollapsing}
+  class:hardware={islandState.mode === 'hardware' && !islandState.isCollapsing}
+  class:clipboard={islandState.mode === 'clipboard' && !islandState.isCollapsing}
+  class:shelf={islandState.mode === 'shelf' && !islandState.isCollapsing}
+  class:surface-drag-over={isSurfaceDragOver}
   class:dev-build-active={(islandState.mode === 'idle' || islandState.isCollapsing) && islandState.hasActiveBuild}
   class:agent-active={(islandState.mode === 'idle' || islandState.isCollapsing) && islandState.hasActiveAgent}
   class:media-active={(islandState.mode === 'idle' || islandState.isCollapsing) && islandState.hasActiveMedia}
@@ -137,6 +238,9 @@
   onmouseenter={handleSurfaceMouseEnter}
   onmouseleave={handleSurfaceMouseLeave}
   onpointermove={handleSurfacePointerMove}
+  ondragover={handleSurfaceDragOver}
+  ondragleave={handleSurfaceDragLeave}
+  ondrop={handleSurfaceDrop}
   style="width: {islandState.dimensions.width}px; min-height: {islandState.dimensions.height}px; height: {islandState.dimensions.height}px;"
 >
   {#if islandState.mode === 'idle' || islandState.isCollapsing}
@@ -288,6 +392,27 @@
             <span class="pill-title">Dynamic Island</span>
           </div>
           <div class="pill-right">
+            {#if isMicMuted && settings.show_mic_in_pill}
+              <button
+                type="button"
+                class="pill-badge pill-badge-mic-muted"
+                onclick={handleToggleMic}
+                title="Microphone is MUTED (Click to Unmute)"
+              >
+                <span class="mic-dot-pulse" aria-hidden="true"></span>
+                🎤 Muted
+              </button>
+            {/if}
+            {#if shelfCount > 0 && settings.show_shelf_in_pill}
+              <button
+                type="button"
+                class="pill-badge pill-badge-shelf"
+                onclick={handleOpenShelf}
+                title="{shelfCount} items parked on shelf"
+              >
+                📁 {shelfCount}
+              </button>
+            {/if}
             {#if islandState.isBatteryLow && telemetry?.battery && settings.show_battery_alert}
               <span class="pill-badge pill-badge-alert" title="Battery Low">
                 🪫 {telemetry.battery.percent}%
@@ -304,7 +429,7 @@
               <span class="pill-badge pill-badge-ports" title="{islandState.webPortsCount} web servers listening">
                 🌐 {islandState.webPortsCount}
               </span>
-            {:else}
+            {:else if !isMicMuted && shelfCount === 0}
               <span class="pill-badge">Idle</span>
             {/if}
           </div>
@@ -574,6 +699,70 @@
                 </button>
               {/if}
 
+              <!-- Hardware & Audio Controls Card -->
+              <button
+                type="button"
+                class="action-card-btn"
+                onclick={handleOpenHardware}
+                aria-label="Open Hardware and Audio Controls"
+              >
+                <div class="card-icon hardware-icon" class:muted-mic={isMicMuted}>
+                  {#if isMicMuted}
+                    🎤
+                  {:else}
+                    🎧
+                  {/if}
+                </div>
+                <div class="card-text">
+                  <span class="card-title">
+                    Hardware & Audio ({isMicMuted ? 'Mic Muted' : 'Mic Active'})
+                  </span>
+                  <span class="card-subtitle">
+                    {islandState.audio?.active_output_name || 'Audio Output'} • Vol {islandState.audio?.output_volume ?? 100}%
+                  </span>
+                </div>
+              </button>
+
+              <!-- Clipboard History & Snippets Card -->
+              <button
+                type="button"
+                class="action-card-btn"
+                onclick={handleOpenClipboard}
+                aria-label="Open Clipboard History and Snippets"
+              >
+                <div class="card-icon clipboard-icon">
+                  📋
+                </div>
+                <div class="card-text">
+                  <span class="card-title">
+                    Clipboard & Snippets ({clipboardCount} items)
+                  </span>
+                  <span class="card-subtitle">
+                    {islandState.clipboard.snippets.length} pinned snippets • 1-click copy & paste
+                  </span>
+                </div>
+              </button>
+
+              <!-- Desktop Drop Shelf Card -->
+              <button
+                type="button"
+                class="action-card-btn"
+                onclick={handleOpenShelf}
+                aria-label="Open Desktop Drop Shelf"
+              >
+                <div class="card-icon shelf-icon">
+                  📁
+                </div>
+                <div class="card-text">
+                  <span class="card-title">
+                    Desktop Drop Shelf ({shelfCount} Parked)
+                  </span>
+                  <span class="card-subtitle">
+                    Drag & drop files or screenshots to park while switching apps
+                  </span>
+                </div>
+              </button>
+
               <!-- Settings & Preferences Card -->
               <button
                 type="button"
@@ -649,6 +838,18 @@
         <div class="panel-content">
           <DockerPreview />
         </div>
+      {:else if activePanelMode === 'hardware'}
+        <div class="panel-content">
+          <HardwarePreview />
+        </div>
+      {:else if activePanelMode === 'clipboard'}
+        <div class="panel-content">
+          <ClipboardPreview />
+        </div>
+      {:else if activePanelMode === 'shelf'}
+        <div class="panel-content">
+          <DropShelfPreview />
+        </div>
       {/if}
     </div>
   {/if}
@@ -707,11 +908,20 @@
   .island-surface.editor,
   .island-surface.ports,
   .island-surface.docker,
+  .island-surface.hardware,
+  .island-surface.clipboard,
+  .island-surface.shelf,
   .island-surface:not(.compact):not(.notification) {
     border-radius: 20px;
     padding: 14px 16px;
     box-shadow: var(--island-shadow, 0 8px 32px rgba(0, 0, 0, 0.75));
     justify-content: flex-start;
+  }
+
+  .island-surface.surface-drag-over {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 24px rgba(59, 130, 246, 0.5) !important;
+    transform: scale(1.02);
   }
 
   .island-surface.notification {
@@ -889,6 +1099,49 @@
     background: rgba(239, 68, 68, 0.25);
     color: #fca5a5;
     font-weight: 600;
+  }
+
+  .pill-badge-mic-muted {
+    background: rgba(239, 68, 68, 0.25);
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+    margin-right: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s ease;
+  }
+
+  .pill-badge-mic-muted:hover {
+    background: rgba(239, 68, 68, 0.4);
+    transform: scale(1.04);
+  }
+
+  .mic-dot-pulse {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ef4444;
+    box-shadow: 0 0 6px #ef4444;
+    animation: statusPulse 1.4s infinite ease-in-out;
+  }
+
+  .pill-badge-shelf {
+    background: rgba(59, 130, 246, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    color: #93c5fd;
+    font-weight: 600;
+    cursor: pointer;
+    margin-right: 4px;
+    transition: all 0.2s ease;
+  }
+
+  .pill-badge-shelf:hover {
+    background: rgba(59, 130, 246, 0.35);
+    transform: scale(1.04);
   }
 
   .pill-badge-sys {
@@ -1132,6 +1385,29 @@
   .card-icon.docker-icon {
     background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
     color: #ffffff;
+  }
+
+  .card-icon.hardware-icon {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    color: #ffffff;
+    font-size: 15px;
+  }
+
+  .card-icon.hardware-icon.muted-mic {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+  }
+
+  .card-icon.clipboard-icon {
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    color: #ffffff;
+    font-size: 15px;
+  }
+
+  .card-icon.shelf-icon {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: #ffffff;
+    font-size: 15px;
   }
 
   .editor-pill-icon {

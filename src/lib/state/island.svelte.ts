@@ -16,6 +16,12 @@ import type {
   EditorPresence,
   PortInfo,
   DockerContainerInfo,
+  AudioStatus,
+  AudioOutputDevice,
+  ClipboardData,
+  ClipboardItem,
+  SnippetItem,
+  ShelfItem,
 } from '../types';
 
 export const DEFAULT_SETTINGS: IslandSettings = {
@@ -34,6 +40,9 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   show_editor_in_pill: true,
   show_ports_in_pill: true,
   show_docker_in_pill: true,
+  show_mic_in_pill: true,
+  show_shelf_in_pill: true,
+  show_clipboard_in_pill: true,
   watched_repo_path: null,
   autostart_enabled: false,
 };
@@ -50,6 +59,9 @@ export const BASE_DIMENSIONS: Record<IslandMode, IslandDimensions> = {
   editor: { width: 400, height: 320 },
   ports: { width: 400, height: 400 },
   docker: { width: 400, height: 420 },
+  hardware: { width: 400, height: 380 },
+  clipboard: { width: 400, height: 430 },
+  shelf: { width: 400, height: 380 },
 };
 
 class IslandStore {
@@ -93,6 +105,10 @@ class IslandStore {
   editor = $state<EditorPresence | null>(null);
   ports = $state<PortInfo[]>([]);
   dockerContainers = $state<DockerContainerInfo[]>([]);
+  audio = $state<AudioStatus | null>(null);
+  clipboard = $state<ClipboardData>({ history: [], snippets: [] });
+  shelf = $state<ShelfItem[]>([]);
+  isDragOverShelf = $state<boolean>(false);
 
   get webPortsCount(): number {
     return this.ports.filter((p) => p.category === 'web').length;
@@ -100,6 +116,18 @@ class IslandStore {
 
   get runningDockerCount(): number {
     return this.dockerContainers.filter((c) => c.is_running).length;
+  }
+
+  get isMicMuted(): boolean {
+    return this.audio?.mic_muted ?? false;
+  }
+
+  get shelfCount(): number {
+    return this.shelf.length;
+  }
+
+  get clipboardHistoryCount(): number {
+    return this.clipboard.history.length;
   }
 
   // Hover & Inactivity Settings
@@ -137,6 +165,8 @@ class IslandStore {
   private unlistenTrayToggle: UnlistenFn | null = null;
   private unlistenTrayCycle: UnlistenFn | null = null;
   private unlistenTraySettings: UnlistenFn | null = null;
+  private unlistenAudio: UnlistenFn | null = null;
+  private unlistenClipboard: UnlistenFn | null = null;
   private notificationTimeout: ReturnType<typeof setTimeout> | null = null;
 
   get isExpanded(): boolean {
@@ -209,6 +239,8 @@ class IslandStore {
       if (this.hasActiveMedia) return 330;
       if (this.hasActiveGit && this.settings.show_git_in_pill) return 330;
       if (this.hasActiveEditor && this.settings.show_editor_in_pill) return 340;
+      if (this.isMicMuted && this.settings.show_mic_in_pill) return 320;
+      if (this.shelfCount > 0 && this.settings.show_shelf_in_pill) return 320;
       return 280;
     }
     return BASE_DIMENSIONS[this.mode].width;
@@ -245,6 +277,15 @@ class IslandStore {
     }
     if (this.mode === 'docker') {
       return 420;
+    }
+    if (this.mode === 'hardware') {
+      return 380;
+    }
+    if (this.mode === 'clipboard') {
+      return 430;
+    }
+    if (this.mode === 'shelf') {
+      return 380;
     }
     return BASE_DIMENSIONS[this.mode].height;
   }
@@ -562,6 +603,223 @@ class IslandStore {
       }
     } catch (err) {
       console.debug('refreshGitStatus note:', err);
+    }
+  }
+
+  // --- Hardware & Audio Controls ---
+
+  async openHardware() {
+    await this.refreshAudio();
+    await this.setMode('hardware');
+  }
+
+  async refreshAudio() {
+    try {
+      const status = await invoke<AudioStatus>('get_audio_status');
+      if (status) {
+        this.audio = status;
+      }
+    } catch (err) {
+      console.debug('Failed to get audio status:', err);
+    }
+  }
+
+  async toggleMicMute() {
+    try {
+      const muted = await invoke<boolean>('toggle_mic_mute');
+      if (this.audio) {
+        this.audio.mic_muted = muted;
+      } else {
+        await this.refreshAudio();
+      }
+    } catch (err) {
+      console.error('Failed to toggle mic mute:', err);
+    }
+  }
+
+  async setMicVolume(volume: number) {
+    try {
+      await invoke('set_mic_volume', { volume: Math.round(volume) });
+      if (this.audio) {
+        this.audio.mic_volume = Math.round(volume);
+      }
+    } catch (err) {
+      console.error('Failed to set mic volume:', err);
+    }
+  }
+
+  async setOutputVolume(volume: number) {
+    try {
+      await invoke('set_output_volume', { volume: Math.round(volume) });
+      if (this.audio) {
+        this.audio.output_volume = Math.round(volume);
+      }
+    } catch (err) {
+      console.error('Failed to set output volume:', err);
+    }
+  }
+
+  async toggleOutputMute() {
+    try {
+      const muted = await invoke<boolean>('toggle_output_mute');
+      if (this.audio) {
+        this.audio.output_muted = muted;
+      }
+    } catch (err) {
+      console.error('Failed to toggle output mute:', err);
+    }
+  }
+
+  async setAudioOutput(id: string) {
+    try {
+      await invoke('set_audio_output', { id });
+      await this.refreshAudio();
+    } catch (err) {
+      console.error('Failed to set audio output:', err);
+    }
+  }
+
+  // --- Quick Clipboard & Snippets ---
+
+  async openClipboard() {
+    await this.refreshClipboard();
+    await this.setMode('clipboard');
+  }
+
+  async refreshClipboard() {
+    try {
+      const data = await invoke<ClipboardData>('get_clipboard_data');
+      if (data) {
+        this.clipboard = data;
+      }
+    } catch (err) {
+      console.debug('Failed to get clipboard data:', err);
+    }
+  }
+
+  async copyToClipboard(text: string): Promise<boolean> {
+    try {
+      await invoke('copy_to_clipboard', { content: text });
+      await this.refreshClipboard();
+      return true;
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+      return false;
+    }
+  }
+
+  async addSnippet(title: string, content: string, category: string = 'General') {
+    try {
+      await invoke('add_snippet', { title, content, category });
+      await this.refreshClipboard();
+    } catch (err) {
+      console.error('Failed to add snippet:', err);
+    }
+  }
+
+  async deleteSnippet(id: string) {
+    try {
+      await invoke('delete_snippet', { id });
+      await this.refreshClipboard();
+    } catch (err) {
+      console.error('Failed to delete snippet:', err);
+    }
+  }
+
+  async deleteClipboardItem(id: string) {
+    try {
+      await invoke('delete_clipboard_item', { id });
+      await this.refreshClipboard();
+    } catch (err) {
+      console.error('Failed to delete clipboard item:', err);
+    }
+  }
+
+  async clearClipboardHistory() {
+    try {
+      await invoke('clear_clipboard_history');
+      await this.refreshClipboard();
+    } catch (err) {
+      console.error('Failed to clear clipboard history:', err);
+    }
+  }
+
+  // --- Desktop Drop Shelf ---
+
+  async openShelf() {
+    await this.refreshShelf();
+    await this.setMode('shelf');
+  }
+
+  async refreshShelf() {
+    try {
+      const items = await invoke<ShelfItem[]>('get_shelf_items');
+      if (items) {
+        this.shelf = items;
+      }
+    } catch (err) {
+      console.debug('Failed to get shelf items:', err);
+    }
+  }
+
+  async addShelfPaths(paths: string[]) {
+    try {
+      const items = await invoke<ShelfItem[]>('add_shelf_paths', { paths });
+      if (items) {
+        this.shelf = items;
+      }
+    } catch (err) {
+      console.error('Failed to add shelf paths:', err);
+    }
+  }
+
+  async addShelfText(content: string, title?: string) {
+    try {
+      const item = await invoke<ShelfItem>('add_shelf_text', {
+        content,
+        title: title || null,
+      });
+      if (item) {
+        await this.refreshShelf();
+      }
+    } catch (err) {
+      console.error('Failed to add shelf text:', err);
+    }
+  }
+
+  async removeShelfItem(id: string) {
+    try {
+      await invoke('remove_shelf_item', { id });
+      await this.refreshShelf();
+    } catch (err) {
+      console.error('Failed to remove shelf item:', err);
+    }
+  }
+
+  async clearShelf() {
+    try {
+      await invoke('clear_shelf');
+      this.shelf = [];
+    } catch (err) {
+      console.error('Failed to clear shelf:', err);
+    }
+  }
+
+  async openShelfItemInFolder(path: string) {
+    try {
+      await invoke('open_shelf_item_in_file_manager', { path });
+    } catch (err) {
+      console.error('Failed to open shelf item:', err);
+    }
+  }
+
+  async copyShelfFileToFileManager(path: string): Promise<boolean> {
+    try {
+      await invoke('copy_shelf_file_to_file_manager', { path });
+      return true;
+    } catch (err) {
+      console.error('Failed to copy shelf file for file manager:', err);
+      return false;
     }
   }
 
@@ -1087,14 +1345,49 @@ class IslandStore {
       console.debug('Failed to register tray-settings listener:', err);
     }
 
-    // 9. Initial Developer Hub sample
+    // 9. Hardware audio listener
+    try {
+      this.unlistenAudio = await listen<AudioStatus>('audio-status-change', async (event) => {
+        const wasMuted = this.isMicMuted;
+        this.audio = event.payload;
+        const nowMuted = this.isMicMuted;
+
+        if (this.mode === 'idle' && wasMuted !== nowMuted) {
+          await this.syncNativeWindow();
+        }
+      });
+    } catch (err) {
+      console.debug('Failed to register audio listener:', err);
+    }
+
+    // 10. Live Clipboard listener
+    try {
+      this.unlistenClipboard = await listen<ClipboardData>('clipboard-change', (event) => {
+        this.clipboard = event.payload;
+      });
+    } catch (err) {
+      console.debug('Failed to register clipboard listener:', err);
+    }
+
+    // 11. Initial samples
     this.refreshPorts();
     this.refreshDocker();
+    this.refreshAudio();
+    this.refreshClipboard();
+    this.refreshShelf();
   }
 
   destroyServices() {
     this.clearHoverTimers();
     this.clearInactivityTimer();
+    if (this.unlistenClipboard) {
+      this.unlistenClipboard();
+      this.unlistenClipboard = null;
+    }
+    if (this.unlistenAudio) {
+      this.unlistenAudio();
+      this.unlistenAudio = null;
+    }
     if (this.unlistenMedia) {
       this.unlistenMedia();
       this.unlistenMedia = null;

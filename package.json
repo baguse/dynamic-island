@@ -12,6 +12,7 @@
     "build:deb": "npx tauri build --bundles deb"
   },
   "dependencies": {
+    "@crabnebula/tauri-plugin-drag": "^2.1.0",
     "@tauri-apps/api": "^2.2.0"
   },
   "devDependencies": {

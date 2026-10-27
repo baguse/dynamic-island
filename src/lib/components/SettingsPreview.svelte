@@ -35,7 +35,7 @@
     islandState.updateSettings({ top_margin: val });
   }
 
-  function handleToggleModule(module: 'system' | 'battery' | 'media' | 'build' | 'agent' | 'git' | 'editor' | 'ports' | 'docker' | 'autostart') {
+  function handleToggleModule(module: 'system' | 'battery' | 'media' | 'build' | 'agent' | 'git' | 'editor' | 'ports' | 'docker' | 'mic' | 'shelf' | 'clipboard' | 'autostart') {
     if (module === 'system') {
       islandState.updateSettings({ show_system_in_pill: !settings.show_system_in_pill });
     } else if (module === 'battery') {
@@ -54,6 +54,12 @@
       islandState.updateSettings({ show_ports_in_pill: !settings.show_ports_in_pill });
     } else if (module === 'docker') {
       islandState.updateSettings({ show_docker_in_pill: !settings.show_docker_in_pill });
+    } else if (module === 'mic') {
+      islandState.updateSettings({ show_mic_in_pill: !settings.show_mic_in_pill });
+    } else if (module === 'shelf') {
+      islandState.updateSettings({ show_shelf_in_pill: !settings.show_shelf_in_pill });
+    } else if (module === 'clipboard') {
+      islandState.updateSettings({ show_clipboard_in_pill: !settings.show_clipboard_in_pill });
     } else if (module === 'autostart') {
       islandState.updateSettings({ autostart_enabled: !settings.autostart_enabled });
     }
@@ -351,6 +357,45 @@
           class:checked={settings.show_docker_in_pill}
           onclick={() => handleToggleModule('docker')}
           aria-label="Toggle docker containers module"
+        >
+          <span class="toggle-thumb"></span>
+        </button>
+      </div>
+
+      <div class="setting-item">
+        <span class="setting-name">Microphone Mute Status Badge</span>
+        <button
+          type="button"
+          class="toggle-switch"
+          class:checked={settings.show_mic_in_pill}
+          onclick={() => handleToggleModule('mic')}
+          aria-label="Toggle microphone mute badge in pill"
+        >
+          <span class="toggle-thumb"></span>
+        </button>
+      </div>
+
+      <div class="setting-item">
+        <span class="setting-name">Desktop Drop Shelf Badge</span>
+        <button
+          type="button"
+          class="toggle-switch"
+          class:checked={settings.show_shelf_in_pill}
+          onclick={() => handleToggleModule('shelf')}
+          aria-label="Toggle desktop drop shelf badge in pill"
+        >
+          <span class="toggle-thumb"></span>
+        </button>
+      </div>
+
+      <div class="setting-item">
+        <span class="setting-name">Quick Clipboard & Snippets</span>
+        <button
+          type="button"
+          class="toggle-switch"
+          class:checked={settings.show_clipboard_in_pill}
+          onclick={() => handleToggleModule('clipboard')}
+          aria-label="Toggle clipboard history in pill"
         >
           <span class="toggle-thumb"></span>
         </button>

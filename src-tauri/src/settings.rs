@@ -32,6 +32,12 @@ pub struct IslandSettings {
     pub show_ports_in_pill: bool,
     #[serde(default = "default_true")]
     pub show_docker_in_pill: bool,
+    #[serde(default = "default_true")]
+    pub show_mic_in_pill: bool,
+    #[serde(default = "default_true")]
+    pub show_shelf_in_pill: bool,
+    #[serde(default = "default_true")]
+    pub show_clipboard_in_pill: bool,
     #[serde(default)]
     pub watched_repo_path: Option<String>,
     pub autostart_enabled: bool,
@@ -55,13 +61,16 @@ impl Default for IslandSettings {
             show_editor_in_pill: true,
             show_ports_in_pill: true,
             show_docker_in_pill: true,
+            show_mic_in_pill: true,
+            show_shelf_in_pill: true,
+            show_clipboard_in_pill: true,
             watched_repo_path: None,
             autostart_enabled: false,
         }
     }
 }
 
-fn get_config_dir() -> PathBuf {
+pub fn get_config_dir() -> PathBuf {
     if let Ok(config_home) = std::env::var("XDG_CONFIG_HOME") {
         PathBuf::from(config_home).join("dynamic-island")
     } else if let Ok(home) = std::env::var("HOME") {
