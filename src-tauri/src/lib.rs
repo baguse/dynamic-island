@@ -20,6 +20,8 @@ pub struct AppState {
     pub dev_manager: Arc<dev_ipc::DevManager>,
     pub clipboard_manager: Arc<clipboard::ClipboardManager>,
     pub shelf_manager: Arc<drop_shelf::ShelfManager>,
+    pub last_programmatic_pos: Mutex<Option<(i32, i32)>>,
+    pub pending_user_pos: Mutex<Option<(f64, f64, std::time::Instant)>>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -41,23 +43,91 @@ pub struct MonitorInfo {
     pub scale_factor: f64,
 }
 
-fn resolve_monitor(
-    window: &WebviewWindow,
+fn resolve_monitor_from_window(
+    available: Vec<tauri::Monitor>,
+    current: Option<tauri::Monitor>,
+    primary: Option<tauri::Monitor>,
     target_name: Option<&str>,
 ) -> Option<tauri::Monitor> {
-    let monitors = window.available_monitors().ok()?;
-
     if let Some(name) = target_name {
-        if let Some(m) = monitors.iter().find(|m| m.name().map_or(false, |n| n == name)) {
+        if let Some(m) = available.iter().find(|m| m.name().map_or(false, |n| n == name)) {
             return Some(m.clone());
         }
     }
 
-    if let Some(m) = window.current_monitor().ok().flatten() {
+    if let Some(m) = current {
         return Some(m);
     }
 
-    window.primary_monitor().ok().flatten().or_else(|| monitors.into_iter().next())
+    primary.or_else(|| available.into_iter().next())
+}
+
+fn resolve_monitor(
+    window: &WebviewWindow,
+    target_name: Option<&str>,
+) -> Option<tauri::Monitor> {
+    let available = window.available_monitors().ok().unwrap_or_default();
+    let current = window.current_monitor().ok().flatten();
+    let primary = window.primary_monitor().ok().flatten();
+    resolve_monitor_from_window(available, current, primary, target_name)
+}
+
+fn resolve_monitor_for_win(
+    window: &tauri::Window,
+    target_name: Option<&str>,
+) -> Option<tauri::Monitor> {
+    let available = window.available_monitors().ok().unwrap_or_default();
+    let current = window.current_monitor().ok().flatten();
+    let primary = window.primary_monitor().ok().flatten();
+    resolve_monitor_from_window(available, current, primary, target_name)
+}
+
+pub fn compute_target_coordinates(
+    monitor: &tauri::Monitor,
+    target_physical_width: u32,
+    top_margin_override: f64,
+) -> (i32, i32) {
+    let settings = settings::load_settings_from_disk();
+    let scale_factor = monitor.scale_factor();
+    let monitor_pos = monitor.position();
+    let monitor_size = monitor.size();
+
+    let margin_side = (20.0 * scale_factor).round() as i32;
+    let x_offset_phys = (settings.x_offset * scale_factor).round() as i32;
+
+    let offset_x = match settings.horizontal_position.to_lowercase().as_str() {
+        "left" => margin_side + x_offset_phys,
+        "right" => {
+            if monitor_size.width > target_physical_width {
+                (monitor_size.width - target_physical_width) as i32 - margin_side + x_offset_phys
+            } else {
+                x_offset_phys
+            }
+        }
+        "custom" => x_offset_phys,
+        _ => {
+            // "center" default
+            let center_base = if monitor_size.width > target_physical_width {
+                ((monitor_size.width - target_physical_width) / 2) as i32
+            } else {
+                0
+            };
+            center_base + x_offset_phys
+        }
+    };
+
+    let effective_top_margin = if settings.horizontal_position.eq_ignore_ascii_case("custom") {
+        settings.top_margin
+    } else if top_margin_override >= 0.0 {
+        top_margin_override
+    } else {
+        settings.top_margin
+    };
+
+    let target_x = monitor_pos.x + offset_x;
+    let target_y = monitor_pos.y + (effective_top_margin * scale_factor).round() as i32;
+
+    (target_x, target_y)
 }
 
 #[tauri::command]
@@ -73,8 +143,6 @@ fn resize_and_center_island(
         .ok_or_else(|| "No monitor detected".to_string())?;
 
     let scale_factor = monitor.scale_factor();
-    let monitor_pos = monitor.position();
-    let monitor_size = monitor.size();
 
     // Lock window width to at least 400 logical pixels so horizontal coordinates (target_x)
     // remain completely static across compact and expanded states, eliminating X11 position displacement.
@@ -82,14 +150,20 @@ fn resize_and_center_island(
     let target_physical_width = (fixed_width * scale_factor).round() as u32;
     let target_physical_height = (height * scale_factor).round() as u32;
 
-    let offset_x = if monitor_size.width > target_physical_width {
-        ((monitor_size.width - target_physical_width) / 2) as i32
-    } else {
-        0
-    };
+    // If there is any pending user manual position from dragging, commit it now
+    let pending = state.pending_user_pos.lock().unwrap().take();
+    if let Some((x_rel, y_rel, _)) = pending {
+        let mut s = settings::load_settings_from_disk();
+        s.horizontal_position = "custom".to_string();
+        s.x_offset = x_rel;
+        s.top_margin = y_rel;
+        let _ = settings::save_settings_to_disk(&s);
+        let _ = window.emit("settings-updated", &s);
+    }
 
-    let target_x = monitor_pos.x + offset_x;
-    let target_y = monitor_pos.y + (top_margin * scale_factor).round() as i32;
+    let (target_x, target_y) = compute_target_coordinates(&monitor, target_physical_width, top_margin);
+
+    *state.last_programmatic_pos.lock().unwrap() = Some((target_x, target_y));
 
     // Only update position if it has actually changed to avoid triggering unnecessary X11 move events
     if let Ok(current_pos) = window.outer_position() {
@@ -179,20 +253,13 @@ fn move_island_to_monitor_by_name(
     *state.current_monitor_name.lock().unwrap() = Some(monitor_name.clone());
 
     let scale_factor = monitor.scale_factor();
-    let monitor_pos = monitor.position();
-    let monitor_size = monitor.size();
 
     let target_physical_width = (width * scale_factor).round() as u32;
     let target_physical_height = (height * scale_factor).round() as u32;
 
-    let offset_x = if monitor_size.width > target_physical_width {
-        ((monitor_size.width - target_physical_width) / 2) as i32
-    } else {
-        0
-    };
+    let (target_x, target_y) = compute_target_coordinates(&monitor, target_physical_width, top_margin);
 
-    let target_x = monitor_pos.x + offset_x;
-    let target_y = monitor_pos.y + (top_margin * scale_factor).round() as i32;
+    *state.last_programmatic_pos.lock().unwrap() = Some((target_x, target_y));
 
     window
         .set_size(Size::Physical(PhysicalSize {
@@ -248,6 +315,77 @@ fn cycle_next_monitor(
         .unwrap_or_else(|| format!("Monitor-{}", next_idx));
 
     move_island_to_monitor_by_name(window, state, next_name, width, height, top_margin)
+}
+
+#[tauri::command]
+fn start_window_drag(window: WebviewWindow) -> Result<(), String> {
+    window.start_dragging().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cycle_horizontal_position(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    width: f64,
+    height: f64,
+) -> Result<String, String> {
+    let mut settings = settings::load_settings_from_disk();
+    let next_pos = match settings.horizontal_position.to_lowercase().as_str() {
+        "center" => "right",
+        "right" => "left",
+        _ => "center",
+    };
+    settings.horizontal_position = next_pos.to_string();
+    settings.x_offset = 0.0;
+    settings::save_settings_to_disk(&settings)?;
+    resize_and_center_island(window.clone(), state, width, height, settings.top_margin)?;
+    let _ = window.emit("settings-updated", &settings);
+    Ok(next_pos.to_string())
+}
+
+#[tauri::command]
+fn set_horizontal_position(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    position: String,
+    x_offset: Option<f64>,
+    width: f64,
+    height: f64,
+) -> Result<String, String> {
+    let mut settings = settings::load_settings_from_disk();
+    settings.horizontal_position = position.clone();
+    if let Some(x) = x_offset {
+        settings.x_offset = x;
+    }
+    settings::save_settings_to_disk(&settings)?;
+    resize_and_center_island(window.clone(), state, width, height, settings.top_margin)?;
+    let _ = window.emit("settings-updated", &settings);
+    Ok(position)
+}
+
+#[tauri::command]
+fn save_custom_window_position(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let saved_name = state.current_monitor_name.lock().unwrap().clone();
+    if let Some(monitor) = resolve_monitor(&window, saved_name.as_deref()) {
+        if let Ok(pos) = window.outer_position() {
+            let scale_factor = monitor.scale_factor();
+            let monitor_pos = monitor.position();
+            let mut settings = settings::load_settings_from_disk();
+            let x_rel = (pos.x - monitor_pos.x) as f64 / scale_factor;
+            let y_rel = ((pos.y - monitor_pos.y) as f64 / scale_factor).max(0.0);
+
+            settings.horizontal_position = "custom".to_string();
+            settings.x_offset = x_rel;
+            settings.top_margin = y_rel;
+            settings::save_settings_to_disk(&settings)?;
+            *state.last_programmatic_pos.lock().unwrap() = Some((pos.x, pos.y));
+            let _ = window.emit("settings-updated", &settings);
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -714,6 +852,58 @@ pub fn run() {
             dev_manager: dev_manager.clone(),
             clipboard_manager,
             shelf_manager,
+            last_programmatic_pos: Mutex::new(None),
+            pending_user_pos: Mutex::new(None),
+        })
+        .on_window_event(|window, event| {
+            match event {
+                tauri::WindowEvent::Moved(pos) => {
+                    if let Some(state) = window.try_state::<AppState>() {
+                        let is_programmatic = {
+                            let lock = state.last_programmatic_pos.lock().unwrap();
+                            if let Some((px, py)) = *lock {
+                                px == pos.x && py == pos.y
+                            } else {
+                                false
+                            }
+                        };
+
+                        if !is_programmatic {
+                            let saved_name = state.current_monitor_name.lock().unwrap().clone();
+                            let current_mon = window.current_monitor().ok().flatten();
+                            let target_mon = current_mon.or_else(|| resolve_monitor_for_win(window, saved_name.as_deref()));
+
+                            if let Some(monitor) = target_mon {
+                                if let Some(name) = monitor.name() {
+                                    *state.current_monitor_name.lock().unwrap() = Some(name.clone());
+                                }
+                                let scale_factor = monitor.scale_factor();
+                                let monitor_pos = monitor.position();
+                                let x_rel = (pos.x - monitor_pos.x) as f64 / scale_factor;
+                                let y_rel = ((pos.y - monitor_pos.y) as f64 / scale_factor).max(0.0);
+
+                                *state.pending_user_pos.lock().unwrap() = Some((x_rel, y_rel, std::time::Instant::now()));
+                            }
+                        }
+                    }
+                }
+                tauri::WindowEvent::Focused(focused) => {
+                    if !focused {
+                        if let Some(state) = window.try_state::<AppState>() {
+                            let pending = state.pending_user_pos.lock().unwrap().take();
+                            if let Some((x_rel, y_rel, _)) = pending {
+                                let mut settings = settings::load_settings_from_disk();
+                                settings.horizontal_position = "custom".to_string();
+                                settings.x_offset = x_rel;
+                                settings.top_margin = y_rel;
+                                let _ = settings::save_settings_to_disk(&settings);
+                                let _ = window.emit("settings-updated", &settings);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
         })
         .setup(move |app| {
             let state = app.state::<AppState>();
@@ -753,6 +943,28 @@ pub fn run() {
 
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(800));
+
+                    // 0. Commit user manual drag position if settled
+                    if let Some(state) = handle.try_state::<AppState>() {
+                        let should_commit = {
+                            let lock = state.pending_user_pos.lock().unwrap();
+                            if let Some((_, _, inst)) = *lock {
+                                inst.elapsed() >= std::time::Duration::from_millis(200)
+                            } else {
+                                false
+                            }
+                        };
+                        if should_commit {
+                            if let Some((x_rel, y_rel, _)) = state.pending_user_pos.lock().unwrap().take() {
+                                let mut s = settings::load_settings_from_disk();
+                                s.horizontal_position = "custom".to_string();
+                                s.x_offset = x_rel;
+                                s.top_margin = y_rel;
+                                let _ = settings::save_settings_to_disk(&s);
+                                let _ = handle.emit("settings-updated", &s);
+                            }
+                        }
+                    }
 
                     // 1. MPRIS check (every 800ms)
                     let current = media::get_active_player_metadata();
@@ -808,6 +1020,10 @@ pub fn run() {
             get_available_monitors,
             move_island_to_monitor_by_name,
             cycle_next_monitor,
+            start_window_drag,
+            cycle_horizontal_position,
+            set_horizontal_position,
+            save_custom_window_position,
             get_system_telemetry,
             get_media_status,
             media_play_pause,

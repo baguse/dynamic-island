@@ -26,6 +26,10 @@ fn default_module_order() -> Vec<String> {
     ]
 }
 
+fn default_horizontal_position() -> String {
+    "center".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IslandSettings {
     #[serde(default = "default_theme")]
@@ -35,6 +39,10 @@ pub struct IslandSettings {
     pub leave_delay_ms: u64,
     pub inactivity_timeout_s: u64,
     pub top_margin: f64,
+    #[serde(default = "default_horizontal_position")]
+    pub horizontal_position: String,
+    #[serde(default)]
+    pub x_offset: f64,
     pub show_system_in_pill: bool,
     pub show_battery_alert: bool,
     pub show_media_in_pill: bool,
@@ -70,6 +78,8 @@ impl Default for IslandSettings {
             leave_delay_ms: 450,
             inactivity_timeout_s: 12,
             top_margin: 12.0,
+            horizontal_position: "center".to_string(),
+            x_offset: 0.0,
             show_system_in_pill: true,
             show_battery_alert: true,
             show_media_in_pill: true,

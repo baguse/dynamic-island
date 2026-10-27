@@ -123,6 +123,7 @@ export interface GitStatus {
 }
 
 export type IslandTheme = 'dark' | 'light' | 'neon' | 'anime';
+export type HorizontalPosition = 'center' | 'left' | 'right' | 'custom';
 
 export const DEFAULT_MODULE_ORDER = [
   'media',
@@ -147,6 +148,8 @@ export interface IslandSettings {
   leave_delay_ms: number;
   inactivity_timeout_s: number;
   top_margin: number;
+  horizontal_position: HorizontalPosition;
+  x_offset: number;
   show_system_in_pill: boolean;
   show_battery_alert: boolean;
   show_media_in_pill: boolean;

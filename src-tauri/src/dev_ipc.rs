@@ -157,6 +157,11 @@ pub enum IpcMessage {
         state: Option<String>,
         git_branch: Option<String>,
     },
+    #[serde(rename = "position")]
+    Position {
+        position: Option<String>,
+        x_offset: Option<f64>,
+    },
 }
 
 pub struct DevManager {
@@ -812,6 +817,45 @@ pub fn process_ipc_message(
 
             r#"{"ok":true}"#.to_string()
         }
+
+        IpcMessage::Position { position, x_offset } => {
+            let mut settings = crate::settings::load_settings_from_disk();
+            let pos_str = position.unwrap_or_else(|| "cycle".to_string()).to_lowercase();
+            let new_pos = match pos_str.as_str() {
+                "cycle" => {
+                    match settings.horizontal_position.to_lowercase().as_str() {
+                        "center" => "right".to_string(),
+                        "right" => "left".to_string(),
+                        _ => "center".to_string(),
+                    }
+                }
+                "left" | "right" | "custom" => pos_str,
+                _ => "center".to_string(),
+            };
+
+            settings.horizontal_position = new_pos.clone();
+            if let Some(x) = x_offset {
+                settings.x_offset = x;
+            } else if new_pos != "custom" {
+                settings.x_offset = 0.0;
+            }
+
+            if let Err(e) = crate::settings::save_settings_to_disk(&settings) {
+                return serde_json::json!({
+                    "ok": false,
+                    "error": e
+                }).to_string();
+            }
+
+            let _ = app_handle.emit("settings-updated", &settings);
+            let _ = app_handle.emit("tray-reposition-island", ());
+
+            serde_json::json!({
+                "ok": true,
+                "horizontal_position": settings.horizontal_position,
+                "x_offset": settings.x_offset
+            }).to_string()
+        }
     }
 }
 
@@ -849,6 +893,15 @@ mod tests {
             assert_eq!(state, BuildState::Idle);
         } else {
             panic!("Expected IpcMessage::Build");
+        }
+
+        let pos_json = r#"{"target":"position","position":"left","x_offset":25.0}"#;
+        let pos_msg: IpcMessage = serde_json::from_str(pos_json).expect("deserialize position");
+        if let IpcMessage::Position { position, x_offset } = pos_msg {
+            assert_eq!(position, Some("left".to_string()));
+            assert_eq!(x_offset, Some(25.0));
+        } else {
+            panic!("Expected IpcMessage::Position");
         }
     }
 

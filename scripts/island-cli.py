@@ -557,6 +557,23 @@ def cmd_settings(args):
         print("✓ Dynamic Island: Opened Settings panel")
     return 0 if success else 1
 
+def cmd_position(args):
+    payload = {
+        "target": "position",
+        "position": args.pos,
+        "x_offset": args.offset
+    }
+    resp = send_ipc_wait(payload, timeout=5)
+    if resp and resp.get("ok"):
+        pos = resp.get("horizontal_position", args.pos)
+        offset = resp.get("x_offset", 0.0)
+        print(f"✓ Dynamic Island: Position updated to [{pos}] (x_offset: {offset}px)")
+        return 0
+    else:
+        err = resp.get("error") if resp else "Failed to send IPC"
+        print(f"✗ Dynamic Island: Could not set position: {err}")
+        return 1
+
 def cmd_hook(args):
     """
     Native Antigravity lifecycle hook handler.
@@ -1154,6 +1171,11 @@ def main():
     # Screen sub-command
     subparsers.add_parser("screen", help="Cycle Dynamic Island to next monitor")
 
+    # Position sub-command
+    pos_parser = subparsers.add_parser("position", help="Set or cycle horizontal screen position (left, center, right, cycle)")
+    pos_parser.add_argument("pos", nargs="?", default="cycle", choices=["left", "center", "right", "cycle"], help="Target position (default: cycle)")
+    pos_parser.add_argument("--offset", "-o", type=float, default=None, help="Horizontal shift offset in pixels")
+
     # Settings sub-command
     subparsers.add_parser("settings", help="Open Settings & Preferences panel")
 
@@ -1226,6 +1248,8 @@ def main():
         sys.exit(cmd_toggle(args))
     elif args.subcommand == "screen":
         sys.exit(cmd_screen(args))
+    elif args.subcommand == "position":
+        sys.exit(cmd_position(args))
     elif args.subcommand == "settings":
         sys.exit(cmd_settings(args))
     elif args.subcommand == "hook":

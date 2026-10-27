@@ -33,6 +33,8 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   leave_delay_ms: 450,
   inactivity_timeout_s: 12,
   top_margin: 12.0,
+  horizontal_position: 'center',
+  x_offset: 0,
   show_system_in_pill: true,
   show_battery_alert: true,
   show_media_in_pill: true,
@@ -170,6 +172,8 @@ class IslandStore {
   private unlistenTraySettings: UnlistenFn | null = null;
   private unlistenAudio: UnlistenFn | null = null;
   private unlistenClipboard: UnlistenFn | null = null;
+  private unlistenSettings: UnlistenFn | null = null;
+  private unlistenTrayReposition: UnlistenFn | null = null;
   private notificationTimeout: ReturnType<typeof setTimeout> | null = null;
 
   get isExpanded(): boolean {
@@ -881,7 +885,7 @@ class IslandStore {
       };
       await this.syncNativeWindow();
     }
-    if ('top_margin' in partial) {
+    if ('top_margin' in partial || 'horizontal_position' in partial || 'x_offset' in partial) {
       await this.syncNativeWindow();
     }
   }
@@ -1219,6 +1223,48 @@ class IslandStore {
     }
   }
 
+  async cyclePosition() {
+    this.resetInactivityTimer();
+    const dim = this.dimensions;
+    try {
+      const nextPos = await invoke<string>('cycle_horizontal_position', {
+        width: dim.width,
+        height: dim.height,
+      });
+      if (nextPos) {
+        this.settings.horizontal_position = nextPos as any;
+        this.settings.x_offset = 0;
+      }
+    } catch (err) {
+      console.debug('cyclePosition note:', err);
+    }
+  }
+
+  async setHorizontalPosition(position: 'left' | 'center' | 'right' | 'custom', xOffset: number = 0) {
+    this.resetInactivityTimer();
+    const dim = this.dimensions;
+    try {
+      await invoke('set_horizontal_position', {
+        position,
+        xOffset,
+        width: dim.width,
+        height: dim.height,
+      });
+      this.settings.horizontal_position = position;
+      this.settings.x_offset = xOffset;
+    } catch (err) {
+      console.debug('setHorizontalPosition note:', err);
+    }
+  }
+
+  async saveCustomPosition() {
+    try {
+      await invoke('save_custom_window_position');
+    } catch (err) {
+      console.debug('saveCustomPosition note:', err);
+    }
+  }
+
   async initServices() {
     // 0. Load persistent settings from disk
     try {
@@ -1445,11 +1491,36 @@ class IslandStore {
     this.refreshAudio();
     this.refreshClipboard();
     this.refreshShelf();
+
+    // 12. Settings updated / Reposition events from IPC or Tray
+    try {
+      this.unlistenSettings = await listen<IslandSettings>('settings-updated', (event) => {
+        this.settings = event.payload;
+      });
+    } catch (err) {
+      console.debug('Failed to register settings-updated listener:', err);
+    }
+
+    try {
+      this.unlistenTrayReposition = await listen('tray-reposition-island', async () => {
+        await this.syncNativeWindow();
+      });
+    } catch (err) {
+      console.debug('Failed to register tray-reposition listener:', err);
+    }
   }
 
   destroyServices() {
     this.clearHoverTimers();
     this.clearInactivityTimer();
+    if (this.unlistenSettings) {
+      this.unlistenSettings();
+      this.unlistenSettings = null;
+    }
+    if (this.unlistenTrayReposition) {
+      this.unlistenTrayReposition();
+      this.unlistenTrayReposition = null;
+    }
     if (this.unlistenClipboard) {
       this.unlistenClipboard();
       this.unlistenClipboard = null;

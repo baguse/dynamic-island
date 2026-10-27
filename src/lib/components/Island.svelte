@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
   import type { UnlistenFn } from '@tauri-apps/api/event';
   import { islandState } from '../state/island.svelte';
@@ -109,7 +110,40 @@
     }
   }
 
+  let isDraggingWindow = false;
+  let justFinishedDrag = false;
+
+  async function handleSurfacePointerDown(e: PointerEvent) {
+    islandState.handleUserActivity();
+    if (e.altKey || e.shiftKey || e.button === 1) {
+      e.preventDefault();
+      e.stopPropagation();
+      isDraggingWindow = true;
+      justFinishedDrag = true;
+      try {
+        await invoke('start_window_drag');
+      } catch (err) {
+        console.debug('start_window_drag note:', err);
+      }
+    }
+  }
+
+  async function handleWindowPointerUp() {
+    if (isDraggingWindow) {
+      isDraggingWindow = false;
+      await islandState.saveCustomPosition();
+      setTimeout(() => {
+        justFinishedDrag = false;
+      }, 200);
+    }
+  }
+
   function handleSurfaceClick(e: MouseEvent) {
+    if (e.altKey || e.shiftKey || justFinishedDrag || isDraggingWindow) {
+      justFinishedDrag = false;
+      isDraggingWindow = false;
+      return;
+    }
     if (islandState.mode === 'idle' || islandState.isCollapsing) {
       islandState.expand();
     }
@@ -197,6 +231,11 @@
     islandState.cycleMonitor();
   }
 
+  function handleCyclePosition(e: MouseEvent) {
+    e.stopPropagation();
+    islandState.cyclePosition();
+  }
+
   function handleSelectMonitor(e: MouseEvent, name: string) {
     e.stopPropagation();
     islandState.moveToMonitor(name);
@@ -206,8 +245,14 @@
 <svelte:window
   onkeydown={() => islandState.handleUserActivity()}
   onpointerdown={() => islandState.handleUserActivity()}
+  onpointerup={handleWindowPointerUp}
   onwheel={() => islandState.handleUserActivity()}
-  onblur={() => islandState.handleWindowBlur()}
+  onblur={() => {
+    if (isDraggingWindow) {
+      handleWindowPointerUp();
+    }
+    islandState.handleWindowBlur();
+  }}
 />
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -238,6 +283,7 @@
   tabindex={islandState.mode === 'idle' || islandState.isCollapsing ? 0 : -1}
   aria-label={islandState.mode === 'idle' || islandState.isCollapsing ? 'Expand Dynamic Island' : 'Dynamic Island'}
   onclick={handleSurfaceClick}
+  onpointerdown={handleSurfacePointerDown}
   onkeydown={(e) => {
     if ((islandState.mode === 'idle' || islandState.isCollapsing) && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
@@ -470,6 +516,14 @@
             <div class="badge-row">
               <span class="status-tag">X11</span>
               <span class="status-tag">Always-On-Top</span>
+              <button
+                type="button"
+                class="status-tag position-switch-tag"
+                onclick={handleCyclePosition}
+                title="Click to cycle position: Center ➔ Right ➔ Left (Quick Dodge)"
+              >
+                Pos: {(settings.horizontal_position || 'center').toUpperCase()} ⮂
+              </button>
               {#if islandState.monitors.length > 1}
                 <button
                   type="button"
@@ -1321,7 +1375,8 @@
     border: 1px solid rgba(255, 255, 255, 0.06);
   }
 
-  .monitor-switch-tag {
+  .monitor-switch-tag,
+  .position-switch-tag {
     background: rgba(59, 130, 246, 0.15);
     color: #93c5fd;
     border-color: rgba(59, 130, 246, 0.3);
@@ -1330,7 +1385,8 @@
     transition: background 0.15s ease, border-color 0.15s ease;
   }
 
-  .monitor-switch-tag:hover {
+  .monitor-switch-tag:hover,
+  .position-switch-tag:hover {
     background: rgba(59, 130, 246, 0.25);
     border-color: rgba(59, 130, 246, 0.5);
     color: #ffffff;

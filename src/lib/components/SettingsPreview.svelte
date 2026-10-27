@@ -168,6 +168,19 @@
     islandState.updateSettings({ top_margin: val });
   }
 
+  function handleHorizontalPosition(pos: 'left' | 'center' | 'right') {
+    islandState.setHorizontalPosition(pos, 0);
+  }
+
+  function handleXOffset(e: Event) {
+    const val = parseFloat((e.target as HTMLInputElement).value);
+    islandState.updateSettings({ x_offset: val });
+  }
+
+  function handleResetXOffset() {
+    islandState.updateSettings({ x_offset: 0 });
+  }
+
   function handleToggleModule(module: ModuleKey | 'battery' | 'autostart') {
     if (module === 'system') {
       islandState.updateSettings({ show_system_in_pill: !settings.show_system_in_pill });
@@ -355,8 +368,77 @@
 
     <!-- Section 2: Position & Placement -->
     <div class="settings-group">
-      <span class="group-title">Position & Placement</span>
+      <div class="group-header">
+        <span class="group-title">Position & Placement</span>
+        <span class="active-theme-tag">
+          {settings.horizontal_position ? settings.horizontal_position.toUpperCase() : 'CENTER'}
+        </span>
+      </div>
 
+      <!-- Horizontal Screen Alignment Preset Buttons -->
+      <div class="position-segmented">
+        <button
+          type="button"
+          class="position-btn"
+          class:active={settings.horizontal_position === 'left'}
+          onclick={() => handleHorizontalPosition('left')}
+          title="Align to Left edge of screen (with margin)"
+        >
+          <span class="pos-icon">⇤</span>
+          <span class="pos-label">Left</span>
+        </button>
+        <button
+          type="button"
+          class="position-btn"
+          class:active={settings.horizontal_position === 'center' || !settings.horizontal_position}
+          onclick={() => handleHorizontalPosition('center')}
+          title="Center on screen (Default)"
+        >
+          <span class="pos-icon">⇥ ⇤</span>
+          <span class="pos-label">Center</span>
+        </button>
+        <button
+          type="button"
+          class="position-btn"
+          class:active={settings.horizontal_position === 'right'}
+          onclick={() => handleHorizontalPosition('right')}
+          title="Align to Right edge of screen (with margin)"
+        >
+          <span class="pos-icon">⇥</span>
+          <span class="pos-label">Right</span>
+        </button>
+      </div>
+
+      <!-- Horizontal Shift Offset (X) Slider -->
+      <div class="setting-item slider-item">
+        <div class="slider-header">
+          <div class="slider-title-row">
+            <span class="setting-name">Horizontal Shift (X Offset)</span>
+            {#if settings.x_offset !== 0}
+              <button
+                type="button"
+                class="reset-offset-btn"
+                onclick={handleResetXOffset}
+                title="Reset offset to 0"
+              >
+                Reset
+              </button>
+            {/if}
+          </div>
+          <span class="slider-val">{Math.round(settings.x_offset || 0)} px</span>
+        </div>
+        <input
+          type="range"
+          min="-500"
+          max="500"
+          step="5"
+          value={settings.x_offset || 0}
+          oninput={handleXOffset}
+          class="range-slider"
+        />
+      </div>
+
+      <!-- Top Screen Margin (Y) Slider -->
       <div class="setting-item slider-item">
         <div class="slider-header">
           <span class="setting-name">Top Screen Margin</span>
@@ -364,13 +446,25 @@
         </div>
         <input
           type="range"
-          min="4"
-          max="36"
+          min="0"
+          max="80"
           step="2"
           value={settings.top_margin}
           oninput={handleTopMargin}
           class="range-slider"
         />
+      </div>
+
+      <!-- Position Tips & Shortcut -->
+      <div class="position-tip-card">
+        <div class="tip-line">
+          <span class="tip-bullet">💡</span>
+          <span><strong>Alt + Drag</strong> (or Shift + Drag) the island pill to move it freely anywhere on screen!</span>
+        </div>
+        <div class="tip-line">
+          <span class="tip-bullet">⚡</span>
+          <span>Run <code>island-cli position cycle</code> or click the position badge in Overview to dodge quickly!</span>
+        </div>
       </div>
     </div>
 
@@ -982,6 +1076,110 @@
 
   .toggle-switch.checked .toggle-thumb {
     transform: translateX(14px);
+  }
+
+  /* Position Controls */
+  .position-segmented {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 3px;
+    border-radius: 8px;
+    border: 1px solid var(--island-card-border, rgba(255, 255, 255, 0.08));
+  }
+
+  .position-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 6px 4px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--island-text-muted, #94a3b8);
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .position-btn:hover {
+    color: var(--island-text-primary, #ffffff);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .position-btn.active {
+    background: var(--island-card-hover, rgba(255, 255, 255, 0.12));
+    border-color: var(--island-accent, #3b82f6);
+    color: var(--island-text-primary, #ffffff);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .pos-icon {
+    font-size: 13px;
+    line-height: 1;
+  }
+
+  .slider-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .reset-offset-btn {
+    font-size: 9.5px;
+    font-weight: 600;
+    color: var(--island-accent, #3b82f6);
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 4px;
+    padding: 1px 5px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .reset-offset-btn:hover {
+    background: rgba(59, 130, 246, 0.25);
+  }
+
+  .position-tip-card {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px dashed var(--island-card-border, rgba(255, 255, 255, 0.1));
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 2px;
+  }
+
+  .tip-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 10.5px;
+    line-height: 1.35;
+    color: var(--island-text-muted, #94a3b8);
+  }
+
+  .tip-line strong {
+    color: var(--island-text-primary, #ffffff);
+  }
+
+  .tip-line code {
+    font-size: 9.5px;
+    font-family: monospace;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 1px 4px;
+    border-radius: 3px;
+    color: #38bdf8;
+  }
+
+  .tip-bullet {
+    font-size: 12px;
+    flex-shrink: 0;
   }
 
   /* Bottom bar */
