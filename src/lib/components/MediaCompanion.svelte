@@ -177,14 +177,27 @@
     }
   }
 
+  let lastVideoTime = 0;
+  let videoStallCount = 0;
+  let videoErrorMsg = $state<string | null>(null);
+
   function handleVideoTimeUpdate(e: Event) {
     const v = e.currentTarget as HTMLVideoElement;
-    if (isLooping && v.duration > 0) {
-      // Seamlessly catch end-of-stream freeze in Linux WebKitGTK / GStreamer:
-      if (v.currentTime >= v.duration - 0.08) {
+    if (v.paused) return;
+
+    // Detect and recover from GStreamer pipeline stalls (hangs)
+    if (v.currentTime === lastVideoTime && v.readyState >= 2) {
+      videoStallCount++;
+      if (videoStallCount > 8) {
+        // Stalled for ~2 seconds while supposedly playing; recover pipeline
+        videoStallCount = 0;
+        console.warn('Video playback stall detected, recovering...');
         v.currentTime = 0;
         v.play().catch(() => {});
       }
+    } else {
+      videoStallCount = 0;
+      lastVideoTime = v.currentTime;
     }
   }
 
@@ -193,6 +206,21 @@
     if (isLooping) {
       v.currentTime = 0;
       v.play().catch(() => {});
+    }
+  }
+
+  function handleVideoError(e: Event) {
+    const v = e.currentTarget as HTMLVideoElement;
+    console.warn('Video playback error:', v.error);
+    videoErrorMsg = 'Playback error (hardware codec stall). Click to retry.';
+  }
+
+  function handleRetryVideo(e: MouseEvent) {
+    e.stopPropagation();
+    videoErrorMsg = null;
+    if (videoRef) {
+      videoRef.load();
+      videoRef.play().catch(() => {});
     }
   }
 
@@ -364,11 +392,19 @@
           preload="auto"
           controls={false}
           onclick={handleToggleVideoPlayback}
-          onplay={() => { isVideoPlaying = true; }}
+          onplay={() => { isVideoPlaying = true; videoErrorMsg = null; }}
           onpause={() => { isVideoPlaying = false; }}
           ontimeupdate={handleVideoTimeUpdate}
           onended={handleVideoEnded}
+          onerror={handleVideoError}
         ></video>
+        {#if videoErrorMsg}
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="video-error-badge" onclick={handleRetryVideo} title="Click to reload video">
+            ⚠️ {videoErrorMsg}
+          </div>
+        {/if}
       {:else}
         <img
           class="media-image"
@@ -730,6 +766,31 @@
 
   .overlay-pill-btn:hover {
     background: rgba(0, 0, 0, 0.9);
+  }
+
+  .video-error-badge {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #ffcc00;
+    background: rgba(20, 20, 25, 0.92);
+    border: 1px solid rgba(255, 204, 0, 0.3);
+    border-radius: 8px;
+    backdrop-filter: blur(8px);
+    cursor: pointer;
+    z-index: 10;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+
+  .video-error-badge:hover {
+    background: rgba(30, 30, 38, 0.98);
+    transform: translate(-50%, -50%) scale(1.03);
   }
 
   /* ========================================================================= */

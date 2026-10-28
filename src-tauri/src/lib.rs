@@ -886,6 +886,9 @@ pub fn run() {
     unsafe {
         // Disable WebKitGTK DMABUF renderer to eliminate transparency noise artifacts on Linux X11
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        // Disable GStreamer DMABUF sink to align with the disabled DMABUF renderer;
+        // prevents green video screens and buffer allocation deadlocks
+        std::env::set_var("WEBKIT_GST_DMABUF_SINK_DISABLED", "1");
         std::env::set_var("NO_AT_BRIDGE", "1");
         std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
     }
