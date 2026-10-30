@@ -330,23 +330,6 @@
     padding-top: 4px;
   }
 
-  .back-btn {
-    background: none;
-    border: none;
-    color: var(--island-text-secondary, #9ca3af);
-    font-size: 11px;
-    cursor: pointer;
-    font-family: inherit;
-    padding: 4px 8px;
-    border-radius: 6px;
-    transition: color 0.15s ease, background 0.15s ease;
-  }
-
-  .back-btn:hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.08);
-  }
-
   .refresh-btn {
     display: inline-flex;
     align-items: center;

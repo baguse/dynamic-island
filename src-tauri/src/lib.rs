@@ -243,6 +243,11 @@ fn resize_and_center_island(
 
     *state.last_programmatic_pos.lock().unwrap() = Some((target_x, target_y, std::time::Instant::now()));
 
+    // Prevent edge-tiling / maximize locks from window managers
+    if window.is_maximized().unwrap_or(false) {
+        let _ = window.unmaximize();
+    }
+
     // Ensure the native window has the fixed size and stable position
     if let Ok(cur_size) = window.inner_size() {
         if cur_size.width != target_physical_width || cur_size.height != target_physical_height {
@@ -415,16 +420,29 @@ fn save_custom_window_position(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     state.is_user_dragging.store(false, Ordering::SeqCst);
+    if window.is_maximized().unwrap_or(false) {
+        let _ = window.unmaximize();
+    }
     if let Ok(pos) = window.outer_position() {
-        let win_w = window.inner_size().map(|s| s.width).unwrap_or(800);
-        if let Some(monitor) = find_monitor_for_webview(&window, &pos, win_w) {
+        let monitor = window.current_monitor().ok().flatten().or_else(|| {
+            let win_w = window.inner_size().map(|s| s.width).unwrap_or(800);
+            find_monitor_for_webview(&window, &pos, win_w)
+        });
+        if let Some(monitor) = monitor {
             let mon_name = monitor.name().cloned();
             if let Some(ref name) = mon_name {
                 *state.current_monitor_name.lock().unwrap() = Some(name.clone());
             }
             let scale_factor = monitor.scale_factor();
             let monitor_pos = monitor.position();
-            let center_phys = (pos.x - monitor_pos.x) + (win_w as i32) / 2;
+            let target_phys_w = (FIXED_WINDOW_WIDTH * scale_factor).round() as u32;
+            let target_phys_h = (FIXED_WINDOW_HEIGHT * scale_factor).round() as u32;
+            let _ = window.set_size(Size::Physical(PhysicalSize {
+                width: target_phys_w,
+                height: target_phys_h,
+            }));
+
+            let center_phys = (pos.x - monitor_pos.x) + (target_phys_w as i32) / 2;
             let center_rel = center_phys as f64 / scale_factor;
             let y_rel = ((pos.y - monitor_pos.y) as f64 / scale_factor).max(0.0);
 
@@ -1079,7 +1097,12 @@ pub fn run() {
                         };
 
                         if !is_prog {
-                            let win_w = window.inner_size().map(|s| s.width).unwrap_or(800);
+                            if window.is_maximized().unwrap_or(false) {
+                                let _ = window.unmaximize();
+                            }
+                            let scale_factor = window.current_monitor().ok().flatten().map(|m| m.scale_factor()).unwrap_or(1.0);
+                            let target_w = (FIXED_WINDOW_WIDTH * scale_factor).round() as u32;
+                            let win_w = window.inner_size().map(|s| s.width).unwrap_or(target_w).min(target_w);
                             if let Some(monitor) = find_monitor_for_win(window, &pos, win_w) {
                                 let mon_name = monitor.name().cloned();
                                 if let Some(ref name) = mon_name {
@@ -1116,6 +1139,11 @@ pub fn run() {
                         }
                     }
                 }
+                tauri::WindowEvent::Resized(_) => {
+                    if window.is_maximized().unwrap_or(false) {
+                        let _ = window.unmaximize();
+                    }
+                }
                 _ => {}
             }
         })
@@ -1145,6 +1173,24 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_always_on_top(true);
                 let _ = window.set_skip_taskbar(true);
+
+                #[cfg(target_os = "linux")]
+                {
+                    use gtk::prelude::*;
+                    if let Ok(gtk_win) = window.gtk_window() {
+                        if let Some(gdk_win) = gtk_win.window() {
+                            gdk_win.set_type_hint(gtk::gdk::WindowTypeHint::Utility);
+                        }
+                        gtk_win.connect_window_state_event(|win, event| {
+                            let state = event.new_window_state();
+                            if state.intersects(gtk::gdk::WindowState::MAXIMIZED | gtk::gdk::WindowState::TILED) {
+                                win.unmaximize();
+                                win.resize(800, 520);
+                            }
+                            gtk::glib::Propagation::Proceed
+                        });
+                    }
+                }
 
                 // Initial position on primary/first monitor (compact pill)
                 let state = app.state::<AppState>();
