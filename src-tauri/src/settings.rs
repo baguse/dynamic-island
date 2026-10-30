@@ -24,6 +24,7 @@ fn default_module_order() -> Vec<String> {
         "mic".to_string(),
         "clipboard".to_string(),
         "shelf".to_string(),
+        "todo".to_string(),
     ]
 }
 
@@ -62,6 +63,7 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     map.insert("editor".to_string(), "Super+Shift+E".to_string());
     map.insert("docker".to_string(), "Super+Shift+D".to_string());
     map.insert("ports".to_string(), "Super+Shift+P".to_string());
+    map.insert("todo".to_string(), "Super+Shift+T".to_string());
     map.insert("settings".to_string(), "Super+Shift+Comma".to_string());
     map
 }
@@ -98,6 +100,8 @@ pub struct IslandSettings {
     pub show_shelf_in_pill: bool,
     #[serde(default = "default_true")]
     pub show_clipboard_in_pill: bool,
+    #[serde(default = "default_true")]
+    pub show_todo_in_pill: bool,
     #[serde(default = "default_module_order")]
     pub module_order: Vec<String>,
     #[serde(default)]
@@ -152,6 +156,7 @@ impl Default for IslandSettings {
             show_mic_in_pill: true,
             show_shelf_in_pill: true,
             show_clipboard_in_pill: true,
+            show_todo_in_pill: true,
             module_order: default_module_order(),
             watched_repo_path: None,
             show_media_companion: true,
@@ -286,7 +291,8 @@ mod tests {
         assert_eq!(s.top_margin, 12.0);
         assert!(s.show_ports_in_pill);
         assert!(s.show_docker_in_pill);
-        assert_eq!(s.module_order.len(), 11);
+        assert!(s.show_todo_in_pill);
+        assert_eq!(s.module_order.len(), 12);
         assert_eq!(s.module_order[0], "media");
         assert!(s.show_media_companion);
         assert_eq!(s.media_companion_style, "vinyl");
@@ -303,7 +309,7 @@ mod tests {
     fn test_module_order_backwards_compatibility() {
         let json = r#"{"theme":"neon","hover_expand_enabled":true,"hover_delay_ms":200,"leave_delay_ms":400,"inactivity_timeout_s":10,"top_margin":10.0,"show_system_in_pill":true,"show_battery_alert":true,"show_media_in_pill":true,"show_build_in_pill":true,"show_agent_in_pill":true,"autostart_enabled":false}"#;
         let s: IslandSettings = serde_json::from_str(json).unwrap();
-        assert_eq!(s.module_order.len(), 11);
+        assert_eq!(s.module_order.len(), 12);
         assert_eq!(s.module_order[0], "media");
         assert!(s.show_media_companion);
         assert_eq!(s.media_companion_style, "vinyl");

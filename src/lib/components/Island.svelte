@@ -17,6 +17,7 @@
   import HardwarePreview from './HardwarePreview.svelte';
   import ClipboardPreview from './ClipboardPreview.svelte';
   import DropShelfPreview from './DropShelfPreview.svelte';
+  import TodoPreview from './TodoPreview.svelte';
   import AudioEqualizer from './AudioEqualizer.svelte';
   import AmbientSkyCanvas from './AmbientSkyCanvas.svelte';
   import PixelMascot from './PixelMascot.svelte';
@@ -31,6 +32,7 @@
   const settings = $derived(islandState.settings);
   const isMicMuted = $derived(islandState.isMicMuted);
   const shelfCount = $derived(islandState.shelfCount);
+  const pendingTodosCount = $derived(islandState.pendingTodosCount);
   const clipboardCount = $derived(islandState.clipboardHistoryCount);
   const weather = $derived(islandState.weather);
   const activePanelMode = $derived(
@@ -235,6 +237,11 @@
   function handleOpenShelf(e: MouseEvent) {
     e.stopPropagation();
     islandState.openShelf();
+  }
+
+  function handleOpenTodo(e: MouseEvent) {
+    e.stopPropagation();
+    islandState.openTodo();
   }
 
   function handleToggleMic(e: MouseEvent) {
@@ -490,6 +497,16 @@
                 title="{shelfCount} items parked on shelf"
               >
                 📁 {shelfCount}
+              </button>
+            {/if}
+            {#if pendingTodosCount > 0 && settings.show_todo_in_pill}
+              <button
+                type="button"
+                class="pill-badge pill-badge-todo"
+                onclick={handleOpenTodo}
+                title="{pendingTodosCount} pending tasks to do"
+              >
+                📝 {pendingTodosCount}
               </button>
             {/if}
             {#if islandState.isBatteryLow && telemetry?.battery && settings.show_battery_alert}
@@ -813,6 +830,23 @@
                         <span class="sidebar-badge shelf-badge">{shelfCount}</span>
                       {/if}
                     </button>
+
+                  {:else if modKey === 'todo' && settings.show_todo_in_pill}
+                    <button
+                      type="button"
+                      class="nav-tab-btn"
+                      class:active={activePanelMode === 'todo'}
+                      onclick={handleOpenTodo}
+                    >
+                      <div class="tab-icon todo-tab-icon">📝</div>
+                      <div class="tab-content">
+                        <span class="tab-title">To-Do List</span>
+                        <span class="tab-sub">{pendingTodosCount} pending tasks</span>
+                      </div>
+                      {#if pendingTodosCount > 0}
+                        <span class="sidebar-badge todo-badge">{pendingTodosCount}</span>
+                      {/if}
+                    </button>
                   {/if}
                 {/each}
 
@@ -905,6 +939,8 @@
                 <ClipboardPreview />
               {:else if activePanelMode === 'shelf'}
                 <DropShelfPreview />
+              {:else if activePanelMode === 'todo'}
+                <TodoPreview />
               {/if}
             </main>
           </div>
@@ -1204,6 +1240,21 @@
 
   .pill-badge-shelf:hover {
     background: rgba(59, 130, 246, 0.35);
+    transform: scale(1.04);
+  }
+
+  .pill-badge-todo {
+    background: rgba(16, 185, 129, 0.2);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    color: #6ee7b7;
+    font-weight: 600;
+    cursor: pointer;
+    margin-right: 4px;
+    transition: all 0.2s ease;
+  }
+
+  .pill-badge-todo:hover {
+    background: rgba(16, 185, 129, 0.35);
     transform: scale(1.04);
   }
 
@@ -1972,6 +2023,11 @@
   .shelf-badge {
     background: rgba(59, 130, 246, 0.2);
     color: #60a5fa;
+  }
+
+  .todo-badge {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
   }
 
   .mini-equalizer {

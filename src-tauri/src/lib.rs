@@ -10,6 +10,7 @@ mod settings;
 mod system;
 mod tray;
 mod weather;
+mod todo;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -24,6 +25,7 @@ pub struct AppState {
     pub dev_manager: Arc<dev_ipc::DevManager>,
     pub clipboard_manager: Arc<clipboard::ClipboardManager>,
     pub shelf_manager: Arc<drop_shelf::ShelfManager>,
+    pub todo_manager: Arc<todo::TodoManager>,
     pub last_programmatic_pos: Mutex<Option<(i32, i32, std::time::Instant)>>,
     pub pending_user_pos: Mutex<Option<(f64, f64, Option<String>, std::time::Instant)>>,
     pub is_user_dragging: AtomicBool,
@@ -884,6 +886,110 @@ async fn copy_shelf_file_to_file_manager(path: String) -> Result<(), String> {
     .map_err(|e| e.to_string())?
 }
 
+// ---------------------------------------------------------------------------
+// To-Do Module Commands
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn get_todos(state: State<'_, AppState>) -> Result<Vec<todo::TodoItem>, String> {
+    Ok(state.todo_manager.get_todos())
+}
+
+#[tauri::command]
+fn add_todo(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    title: String,
+    priority: Option<String>,
+    due_date: Option<String>,
+) -> Result<todo::TodoItem, String> {
+    let prio = match priority.as_deref() {
+        Some("high") => Some(todo::TodoPriority::High),
+        Some("low") => Some(todo::TodoPriority::Low),
+        _ => Some(todo::TodoPriority::Medium),
+    };
+
+    let item = state.todo_manager.add_todo(title, prio, due_date)?;
+    let all = state.todo_manager.get_todos();
+    let _ = app.emit("todos-updated", &all);
+    Ok(item)
+}
+
+#[tauri::command]
+fn toggle_todo(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<todo::TodoItem, String> {
+    let item = state.todo_manager.toggle_todo(&id)?;
+    let all = state.todo_manager.get_todos();
+    let _ = app.emit("todos-updated", &all);
+    Ok(item)
+}
+
+#[tauri::command]
+fn update_todo(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    title: Option<String>,
+    priority: Option<String>,
+    due_date: Option<Option<String>>,
+) -> Result<todo::TodoItem, String> {
+    let prio = priority.and_then(|p| match p.as_str() {
+        "high" => Some(todo::TodoPriority::High),
+        "low" => Some(todo::TodoPriority::Low),
+        _ => Some(todo::TodoPriority::Medium),
+    });
+
+    let item = state.todo_manager.update_todo(&id, title, prio, due_date)?;
+    let all = state.todo_manager.get_todos();
+    let _ = app.emit("todos-updated", &all);
+    Ok(item)
+}
+
+#[tauri::command]
+fn delete_todo(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<bool, String> {
+    let res = state.todo_manager.delete_todo(&id)?;
+    let all = state.todo_manager.get_todos();
+    let _ = app.emit("todos-updated", &all);
+    Ok(res)
+}
+
+#[tauri::command]
+fn clear_completed_todos(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    let res = state.todo_manager.clear_completed()?;
+    let all = state.todo_manager.get_todos();
+    let _ = app.emit("todos-updated", &all);
+    Ok(res)
+}
+
+#[tauri::command]
+fn export_todos_to_markdown(
+    state: State<'_, AppState>,
+    path: Option<String>,
+) -> Result<String, String> {
+    state.todo_manager.export_to_markdown(path)
+}
+
+#[tauri::command]
+fn sync_todos_from_markdown(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    path: Option<String>,
+) -> Result<Vec<todo::TodoItem>, String> {
+    let items = state.todo_manager.sync_from_markdown(path)?;
+    let _ = app.emit("todos-updated", &items);
+    Ok(items)
+}
+
 /// Register (or re-register) all global keyboard shortcuts from settings.
 /// Existing shortcuts are unregistered first to handle remaps cleanly.
 fn apply_global_shortcuts(app: &tauri::AppHandle) {
@@ -933,6 +1039,7 @@ pub fn run() {
     let dev_manager = Arc::new(dev_ipc::DevManager::new());
     let clipboard_manager = clipboard::ClipboardManager::new();
     let shelf_manager = drop_shelf::ShelfManager::new();
+    let todo_manager = todo::TodoManager::new();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_drag::init())
@@ -943,6 +1050,7 @@ pub fn run() {
             dev_manager: dev_manager.clone(),
             clipboard_manager,
             shelf_manager,
+            todo_manager,
             last_programmatic_pos: Mutex::new(None),
             pending_user_pos: Mutex::new(None),
             is_user_dragging: AtomicBool::new(false),
@@ -1200,6 +1308,14 @@ pub fn run() {
             open_shelf_item_in_file_manager,
             weather::fetch_weather,
             copy_shelf_file_to_file_manager,
+            get_todos,
+            add_todo,
+            toggle_todo,
+            update_todo,
+            delete_todo,
+            clear_completed_todos,
+            export_todos_to_markdown,
+            sync_todos_from_markdown,
         ])
         .run(tauri::generate_context!())
         .expect("error while running dynamic-island application");

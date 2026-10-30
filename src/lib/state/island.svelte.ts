@@ -23,6 +23,8 @@ import {
   type ClipboardItem,
   type SnippetItem,
   type ShelfItem,
+  type TodoItem,
+  type TodoPriority,
   type ModuleKey,
   type AudioSpectrumData,
   type WeatherData,
@@ -51,6 +53,7 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   show_mic_in_pill: true,
   show_shelf_in_pill: true,
   show_clipboard_in_pill: true,
+  show_todo_in_pill: true,
   module_order: [...DEFAULT_MODULE_ORDER],
   watched_repo_path: null,
   show_media_companion: true,
@@ -75,6 +78,7 @@ export const DEFAULT_SETTINGS: IslandSettings = {
     editor: 'Super+Shift+E',
     docker: 'Super+Shift+D',
     ports: 'Super+Shift+P',
+    todo: 'Super+Shift+T',
     settings: 'Super+Shift+Comma',
   },
 };
@@ -97,6 +101,7 @@ export const BASE_DIMENSIONS: Record<IslandMode, IslandDimensions> = {
   hardware: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
   clipboard: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
   shelf: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
+  todo: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
 };
 
 class IslandStore {
@@ -151,6 +156,7 @@ class IslandStore {
   clipboard = $state<ClipboardData>({ history: [], snippets: [] });
   shelf = $state<ShelfItem[]>([]);
   isDragOverShelf = $state<boolean>(false);
+  todos = $state<TodoItem[]>([]);
 
   get webPortsCount(): number {
     return this.ports.filter((p) => p.category === 'web').length;
@@ -166,6 +172,14 @@ class IslandStore {
 
   get shelfCount(): number {
     return this.shelf.length;
+  }
+
+  get pendingTodosCount(): number {
+    return this.todos.filter((t) => !t.completed).length;
+  }
+
+  get totalTodosCount(): number {
+    return this.todos.length;
   }
 
   get clipboardHistoryCount(): number {
@@ -212,6 +226,7 @@ class IslandStore {
   private unlistenShortcut: UnlistenFn | null = null;
   private unlistenAudio: UnlistenFn | null = null;
   private unlistenClipboard: UnlistenFn | null = null;
+  private unlistenTodos: UnlistenFn | null = null;
   private unlistenSettings: UnlistenFn | null = null;
   private unlistenTrayReposition: UnlistenFn | null = null;
   private notificationTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -324,6 +339,7 @@ class IslandStore {
       if (active === 'git') return 330;
       if (this.isMicMuted && this.settings.show_mic_in_pill) return 320;
       if (this.shelfCount > 0 && this.settings.show_shelf_in_pill) return 320;
+      if (this.pendingTodosCount > 0 && this.settings.show_todo_in_pill) return 320;
       return 300;
     }
     if (this.mode === 'notification') {
@@ -595,6 +611,7 @@ class IslandStore {
       case 'editor':    await this.setMode('editor');    break;
       case 'hardware':  await this.setMode('hardware');  break;
       case 'shelf':     await this.setMode('shelf');     break;
+      case 'todo':      await this.openTodo();          break;
       default:          await this.setMode(panel);       break;
     }
   }
@@ -907,6 +924,116 @@ class IslandStore {
     } catch (err) {
       console.error('Failed to copy shelf file for file manager:', err);
       return false;
+    }
+  }
+
+  // --- To-Do Module ---
+
+  async openTodo() {
+    await this.refreshTodos();
+    await this.setMode('todo');
+  }
+
+  async refreshTodos() {
+    try {
+      const items = await invoke<TodoItem[]>('get_todos');
+      if (items) {
+        this.todos = items;
+      }
+    } catch (err) {
+      console.debug('Failed to get todos:', err);
+    }
+  }
+
+  async addTodo(title: string, priority: TodoPriority = 'medium', dueDate?: string) {
+    try {
+      const item = await invoke<TodoItem>('add_todo', {
+        title,
+        priority,
+        dueDate: dueDate || null,
+      });
+      if (item) {
+        this.todos = [item, ...this.todos.filter((t) => t.id !== item.id)];
+      }
+      return item;
+    } catch (err) {
+      console.error('Failed to add todo:', err);
+      throw err;
+    }
+  }
+
+  async toggleTodo(id: string) {
+    try {
+      const item = await invoke<TodoItem>('toggle_todo', { id });
+      if (item) {
+        this.todos = this.todos.map((t) => (t.id === id ? item : t));
+      }
+      return item;
+    } catch (err) {
+      console.error('Failed to toggle todo:', err);
+      throw err;
+    }
+  }
+
+  async updateTodo(id: string, title?: string, priority?: TodoPriority, dueDate?: string | null) {
+    try {
+      const item = await invoke<TodoItem>('update_todo', {
+        id,
+        title: title || null,
+        priority: priority || null,
+        dueDate: dueDate !== undefined ? dueDate : null,
+      });
+      if (item) {
+        this.todos = this.todos.map((t) => (t.id === id ? item : t));
+      }
+      return item;
+    } catch (err) {
+      console.error('Failed to update todo:', err);
+      throw err;
+    }
+  }
+
+  async deleteTodo(id: string) {
+    try {
+      await invoke('delete_todo', { id });
+      this.todos = this.todos.filter((t) => t.id !== id);
+    } catch (err) {
+      console.error('Failed to delete todo:', err);
+      throw err;
+    }
+  }
+
+  async clearCompletedTodos() {
+    try {
+      const removed = await invoke<number>('clear_completed_todos');
+      this.todos = this.todos.filter((t) => !t.completed);
+      return removed;
+    } catch (err) {
+      console.error('Failed to clear completed todos:', err);
+      throw err;
+    }
+  }
+
+  async exportTodosToMarkdown(path?: string): Promise<string> {
+    try {
+      const outPath = await invoke<string>('export_todos_to_markdown', { path: path || null });
+      return outPath;
+    } catch (err) {
+      console.error('Failed to export todos to markdown:', err);
+      throw err;
+    }
+  }
+
+  async syncTodosFromMarkdown(path?: string): Promise<TodoItem[]> {
+    try {
+      const items = await invoke<TodoItem[]>('sync_todos_from_markdown', { path: path || null });
+      if (items) {
+        this.todos = items;
+      }
+      return items;
+    } catch (err) {
+      console.error('Failed to sync todos from markdown:', err);
+      throw err;
     }
   }
 
@@ -1598,12 +1725,22 @@ class IslandStore {
       console.debug('Failed to register clipboard listener:', err);
     }
 
+    // Live To-Do listener
+    try {
+      this.unlistenTodos = await listen<TodoItem[]>('todos-updated', (event) => {
+        this.todos = event.payload;
+      });
+    } catch (err) {
+      console.debug('Failed to register todos listener:', err);
+    }
+
     // 11. Initial samples
     this.refreshPorts();
     this.refreshDocker();
     this.refreshAudio();
     this.refreshClipboard();
     this.refreshShelf();
+    this.refreshTodos();
 
     // 12. Settings updated / Reposition events from IPC or Tray
     try {
@@ -1637,6 +1774,10 @@ class IslandStore {
     if (this.unlistenClipboard) {
       this.unlistenClipboard();
       this.unlistenClipboard = null;
+    }
+    if (this.unlistenTodos) {
+      this.unlistenTodos();
+      this.unlistenTodos = null;
     }
     if (this.unlistenAudio) {
       this.unlistenAudio();

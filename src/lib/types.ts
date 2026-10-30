@@ -1,4 +1,4 @@
-export type IslandMode = 'idle' | 'expanded' | 'agent' | 'media' | 'notification' | 'system' | 'settings' | 'git' | 'editor' | 'ports' | 'docker' | 'hardware' | 'clipboard' | 'shelf';
+export type IslandMode = 'idle' | 'expanded' | 'agent' | 'media' | 'notification' | 'system' | 'settings' | 'git' | 'editor' | 'ports' | 'docker' | 'hardware' | 'clipboard' | 'shelf' | 'todo';
 
 export interface IslandDimensions {
   width: number;
@@ -173,6 +173,7 @@ export const DEFAULT_MODULE_ORDER = [
   'mic',
   'clipboard',
   'shelf',
+  'todo',
 ] as const;
 
 export type ModuleKey = (typeof DEFAULT_MODULE_ORDER)[number];
@@ -198,6 +199,7 @@ export interface IslandSettings {
   show_mic_in_pill: boolean;
   show_shelf_in_pill: boolean;
   show_clipboard_in_pill: boolean;
+  show_todo_in_pill: boolean;
   module_order: string[];
   watched_repo_path?: string | null;
   show_media_companion: boolean;
@@ -286,4 +288,16 @@ export interface ShelfItem {
   size_formatted?: string | null;
   extension?: string | null;
   timestamp: number;
+}
+
+export type TodoPriority = 'low' | 'medium' | 'high';
+
+export interface TodoItem {
+  id: string;
+  title: string;
+  completed: boolean;
+  priority: TodoPriority;
+  due_date?: string | null;
+  created_at: number;
+  completed_at?: number | null;
 }

@@ -162,6 +162,15 @@ pub enum IpcMessage {
         position: Option<String>,
         x_offset: Option<f64>,
     },
+    #[serde(rename = "todo")]
+    Todo {
+        action: String, // "add", "list", "toggle", "delete", "clear_completed", "export", "sync"
+        title: Option<String>,
+        id: Option<String>,
+        priority: Option<String>, // "high", "medium", "low"
+        due: Option<String>,
+        path: Option<String>,
+    },
 }
 
 pub struct DevManager {
@@ -855,6 +864,91 @@ pub fn process_ipc_message(
                 "horizontal_position": settings.horizontal_position,
                 "x_offset": settings.x_offset
             }).to_string()
+        }
+
+        IpcMessage::Todo {
+            action,
+            title,
+            id,
+            priority,
+            due,
+            path,
+        } => {
+            if let Some(state) = app_handle.try_state::<crate::AppState>() {
+                let todo_mgr = &state.todo_manager;
+                match action.to_lowercase().as_str() {
+                    "add" => {
+                        let t = title.unwrap_or_default();
+                        let prio = match priority.as_deref() {
+                            Some("high") => Some(crate::todo::TodoPriority::High),
+                            Some("low") => Some(crate::todo::TodoPriority::Low),
+                            _ => Some(crate::todo::TodoPriority::Medium),
+                        };
+                        match todo_mgr.add_todo(t, prio, due) {
+                            Ok(item) => {
+                                let all = todo_mgr.get_todos();
+                                let _ = app_handle.emit("todos-updated", &all);
+                                serde_json::json!({ "ok": true, "todo": item, "total": all.len() }).to_string()
+                            }
+                            Err(e) => serde_json::json!({ "ok": false, "error": e }).to_string(),
+                        }
+                    }
+                    "list" => {
+                        let all = todo_mgr.get_todos();
+                        serde_json::json!({ "ok": true, "todos": all, "total": all.len() }).to_string()
+                    }
+                    "toggle" => {
+                        let target_id = id.unwrap_or_default();
+                        match todo_mgr.toggle_todo(&target_id) {
+                            Ok(item) => {
+                                let all = todo_mgr.get_todos();
+                                let _ = app_handle.emit("todos-updated", &all);
+                                serde_json::json!({ "ok": true, "todo": item }).to_string()
+                            }
+                            Err(e) => serde_json::json!({ "ok": false, "error": e }).to_string(),
+                        }
+                    }
+                    "delete" => {
+                        let target_id = id.unwrap_or_default();
+                        match todo_mgr.delete_todo(&target_id) {
+                            Ok(_) => {
+                                let all = todo_mgr.get_todos();
+                                let _ = app_handle.emit("todos-updated", &all);
+                                serde_json::json!({ "ok": true }).to_string()
+                            }
+                            Err(e) => serde_json::json!({ "ok": false, "error": e }).to_string(),
+                        }
+                    }
+                    "clear_completed" => {
+                        match todo_mgr.clear_completed() {
+                            Ok(removed) => {
+                                let all = todo_mgr.get_todos();
+                                let _ = app_handle.emit("todos-updated", &all);
+                                serde_json::json!({ "ok": true, "removed": removed }).to_string()
+                            }
+                            Err(e) => serde_json::json!({ "ok": false, "error": e }).to_string(),
+                        }
+                    }
+                    "export" => {
+                        match todo_mgr.export_to_markdown(path) {
+                            Ok(out_path) => serde_json::json!({ "ok": true, "path": out_path }).to_string(),
+                            Err(e) => serde_json::json!({ "ok": false, "error": e }).to_string(),
+                        }
+                    }
+                    "sync" => {
+                        match todo_mgr.sync_from_markdown(path) {
+                            Ok(items) => {
+                                let _ = app_handle.emit("todos-updated", &items);
+                                serde_json::json!({ "ok": true, "todos": items, "count": items.len() }).to_string()
+                            }
+                            Err(e) => serde_json::json!({ "ok": false, "error": e }).to_string(),
+                        }
+                    }
+                    _ => serde_json::json!({ "ok": false, "error": format!("Unknown todo action '{}'", action) }).to_string(),
+                }
+            } else {
+                serde_json::json!({ "ok": false, "error": "AppState not available" }).to_string()
+            }
         }
     }
 }

@@ -438,6 +438,77 @@ def cmd_docker(args):
         return 0
 
     running = [c for c in containers if c.get("is_running")]
+    print(f"Docker Containers ({len(running)} running / {len(containers)} total):")
+    for c in containers:
+        status_icon = "🟢" if c.get("is_running") else "⚪"
+        name = c.get("name", "")
+        img = c.get("image", "")
+        stat = c.get("status", "")
+        print(f"  {status_icon} {name:<22} {img:<24} ({stat})")
+    return 0
+
+def cmd_todo(args):
+    action = args.todo_action
+    payload = {"target": "todo", "action": action}
+
+    if action == "add":
+        if not args.title:
+            print("Error: Task title is required. Usage: island-cli todo add 'Task title'")
+            return 1
+        payload["title"] = args.title
+        if args.priority:
+            payload["priority"] = args.priority.lower()
+        if args.due:
+            payload["due"] = args.due
+    elif action in ("toggle", "delete"):
+        if not args.id:
+            print(f"Error: Task ID is required. Usage: island-cli todo {action} <id>")
+            return 1
+        payload["id"] = args.id
+    elif action in ("export", "sync"):
+        if args.path:
+            payload["path"] = args.path
+
+    resp = send_ipc_wait(payload, timeout=5)
+    if not isinstance(resp, dict):
+        print("Error: Dynamic Island is not currently running or IPC failed.")
+        return 1
+
+    if not resp.get("ok"):
+        print(f"Error: {resp.get('error', 'Operation failed')}")
+        return 1
+
+    if action == "add":
+        item = resp.get("todo", {})
+        prio = f" [{item.get('priority', '').upper()}]" if item.get('priority') != 'medium' else ""
+        print(f"✓ Added task: {item.get('title')}{prio} (ID: {item.get('id')})")
+    elif action == "list":
+        todos = resp.get("todos", [])
+        if not todos:
+            print("No tasks found in To-Do list.")
+            return 0
+        pending = [t for t in todos if not t.get("completed")]
+        completed = [t for t in todos if t.get("completed")]
+        print(f"To-Do List ({len(pending)} pending / {len(todos)} total):")
+        for t in todos:
+            mark = "✓" if t.get("completed") else " "
+            prio = f" [{t.get('priority', '').upper()}]" if t.get("priority") != "medium" else ""
+            due = f" (due: {t.get('due_date')})" if t.get("due_date") else ""
+            print(f"  [{mark}] {t.get('title')}{prio}{due}  (ID: {t.get('id')})")
+    elif action == "toggle":
+        item = resp.get("todo", {})
+        status = "Completed" if item.get("completed") else "Pending"
+        print(f"✓ Task updated: {item.get('title')} -> {status}")
+    elif action == "delete":
+        print("✓ Task deleted successfully.")
+    elif action == "clear_completed":
+        print(f"✓ Cleared {resp.get('removed', 0)} completed tasks.")
+    elif action == "export":
+        print(f"✓ Tasks exported to markdown: {resp.get('path')}")
+    elif action == "sync":
+        print(f"✓ Synced {resp.get('count', 0)} tasks from markdown.")
+
+    return 0
     stopped = [c for c in containers if not c.get("is_running")]
     print(f"Docker Containers ({len(running)} running, {len(stopped)} stopped):")
     for c in containers:
@@ -1234,6 +1305,38 @@ def main():
     # Docker sub-command
     subparsers.add_parser("docker", help="List and inspect Docker containers")
 
+    # To-Do sub-command
+    todo_parser = subparsers.add_parser("todo", help="Manage Dynamic Island tasks and to-do list")
+    todo_sub = todo_parser.add_subparsers(dest="todo_action", required=True)
+
+    # todo add
+    todo_add = todo_sub.add_parser("add", help="Add a new task")
+    todo_add.add_argument("title", help="Task title / description")
+    todo_add.add_argument("--priority", "-p", choices=["high", "medium", "low"], default="medium", help="Priority level")
+    todo_add.add_argument("--due", "-d", help="Due date or reminder (e.g. 'Tomorrow', '2026-11-01')")
+
+    # todo list
+    todo_sub.add_parser("list", help="List all tasks (pending and completed)")
+
+    # todo toggle
+    todo_toggle = todo_sub.add_parser("toggle", help="Toggle completion state of a task")
+    todo_toggle.add_argument("id", help="Task ID (e.g. todo-1730000000)")
+
+    # todo delete
+    todo_del = todo_sub.add_parser("delete", help="Delete a task by ID")
+    todo_del.add_argument("id", help="Task ID to delete")
+
+    # todo clear-completed
+    todo_sub.add_parser("clear-completed", help="Remove all finished tasks")
+
+    # todo export
+    todo_exp = todo_sub.add_parser("export", help="Export to markdown file")
+    todo_exp.add_argument("--path", help="Custom markdown path (defaults to ~/todo.md)")
+
+    # todo sync
+    todo_sync = todo_sub.add_parser("sync", help="Sync tasks from a markdown file")
+    todo_sync.add_argument("--path", help="Markdown file path (defaults to ~/todo.md)")
+
     # Notify sub-command
     notify_parser = subparsers.add_parser("notify", help="Send alert notification")
     notify_parser.add_argument("title", help="Notification title")
@@ -1270,6 +1373,8 @@ def main():
         sys.exit(cmd_ports(args))
     elif args.subcommand == "docker":
         sys.exit(cmd_docker(args))
+    elif args.subcommand == "todo":
+        sys.exit(cmd_todo(args))
     elif args.subcommand == "build":
         sys.exit(cmd_build(args))
     elif args.subcommand == "notify":
