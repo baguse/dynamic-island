@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "tauri": "tauri",
-    "build:deb": "npx tauri build --bundles deb"
+    "build:deb": "npx tauri build --bundles deb",
+    "build:rpm": "npx tauri build --bundles rpm"
   },
   "dependencies": {
     "@crabnebula/tauri-plugin-drag": "^2.1.0",
