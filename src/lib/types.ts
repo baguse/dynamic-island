@@ -212,6 +212,7 @@ export interface IslandSettings {
   mascot_type?: MascotType;
   mascot_interactive?: boolean;
   autostart_enabled: boolean;
+  shortcuts: Record<string, string>;
 }
 
 export interface PortInfo {

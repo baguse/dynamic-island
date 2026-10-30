@@ -266,6 +266,106 @@
   }
 
   let previewMascotMood = $state<MascotState | undefined>(undefined);
+
+  // ---------------------------------------------------------------------------
+  // Keyboard Shortcuts
+  // ---------------------------------------------------------------------------
+
+  const SHORTCUT_DEFINITIONS: { key: string; label: string; icon: string }[] = [
+    { key: 'toggle',    label: 'Toggle Island',           icon: '⬛' },
+    { key: 'agent',     label: 'AI Agent Panel',          icon: '🤖' },
+    { key: 'media',     label: 'Media Player',            icon: '🎵' },
+    { key: 'git',       label: 'Git Status',              icon: '⎇' },
+    { key: 'system',    label: 'System Telemetry',        icon: '🖥️' },
+    { key: 'clipboard', label: 'Clipboard & Snippets',    icon: '📋' },
+    { key: 'editor',    label: 'Code Editor Presence',    icon: '⌨️' },
+    { key: 'docker',    label: 'Docker Containers',       icon: '🐳' },
+    { key: 'ports',     label: 'Ports Hub',               icon: '🌐' },
+    { key: 'settings',  label: 'Settings',                icon: '⚙️' },
+  ];
+
+  // Which shortcut row is currently being recorded
+  let recordingKey = $state<string | null>(null);
+  // Temporary input while recording
+  let recordingValue = $state('');
+
+  function startRecording(key: string) {
+    recordingKey = key;
+    recordingValue = settings.shortcuts?.[key] ?? '';
+  }
+
+  function cancelRecording() {
+    recordingKey = null;
+    recordingValue = '';
+  }
+
+  function handleShortcutKeydown(e: KeyboardEvent, key: string) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.key === 'Escape') {
+      cancelRecording();
+      return;
+    }
+
+    // Build shortcut string from pressed combo
+    const parts: string[] = [];
+    if (e.metaKey || e.key === 'Meta')   parts.push('Super');
+    if (e.ctrlKey  || e.key === 'Control') parts.push('Ctrl');
+    if (e.altKey   || e.key === 'Alt')   parts.push('Alt');
+    if (e.shiftKey || e.key === 'Shift') parts.push('Shift');
+
+    const ignoredKeys = new Set(['Control', 'Shift', 'Alt', 'Meta', 'CapsLock']);
+    if (!ignoredKeys.has(e.key)) {
+      // Normalize key name for Tauri global-shortcut format
+      let keyName = e.key;
+      if (keyName === ',') keyName = 'Comma';
+      else if (keyName === '.') keyName = 'Period';
+      else if (keyName === '/') keyName = 'Slash';
+      else if (keyName === ' ') keyName = 'Space';
+      else if (keyName === 'ArrowUp')    keyName = 'Up';
+      else if (keyName === 'ArrowDown')  keyName = 'Down';
+      else if (keyName === 'ArrowLeft')  keyName = 'Left';
+      else if (keyName === 'ArrowRight') keyName = 'Right';
+      else if (keyName.length === 1)     keyName = keyName.toUpperCase();
+      parts.push(keyName);
+      const combo = parts.join('+');
+      saveShortcut(key, combo);
+    } else {
+      // Show modifiers-only progress while holding
+      recordingValue = parts.join('+') + '+…';
+    }
+  }
+
+  function saveShortcut(key: string, combo: string) {
+    const updated = { ...(settings.shortcuts ?? {}), [key]: combo };
+    islandState.updateSettings({ shortcuts: updated });
+    recordingKey = null;
+    recordingValue = '';
+  }
+
+  function clearShortcut(key: string) {
+    const updated = { ...(settings.shortcuts ?? {}), [key]: '' };
+    islandState.updateSettings({ shortcuts: updated });
+    if (recordingKey === key) cancelRecording();
+  }
+
+  function resetAllShortcuts() {
+    islandState.updateSettings({
+      shortcuts: {
+        toggle:    'Super+Shift+I',
+        agent:     'Super+Shift+A',
+        media:     'Super+Shift+M',
+        git:       'Super+Shift+G',
+        system:    'Super+Shift+S',
+        clipboard: 'Super+Shift+C',
+        editor:    'Super+Shift+E',
+        docker:    'Super+Shift+D',
+        ports:     'Super+Shift+P',
+        settings:  'Super+Shift+Comma',
+      },
+    });
+  }
 </script>
 
 <div class="settings-wrapper">
@@ -1087,7 +1187,59 @@
       {/if}
     </div>
 
-    <!-- Section 6: System Integration -->
+    <!-- Section 6: Keyboard Shortcuts -->
+    <div class="settings-group">
+      <div class="group-header">
+        <span class="group-title">Keyboard Shortcuts</span>
+        <button type="button" class="reset-small-btn" onclick={resetAllShortcuts}>Reset</button>
+      </div>
+      <p class="group-desc">Global hotkeys — work even when the island is not focused. Click a shortcut badge to remap it, then press the new key combo.</p>
+
+      {#each SHORTCUT_DEFINITIONS as def (def.key)}
+        {@const current = settings.shortcuts?.[def.key] ?? ''}
+        {@const isRecording = recordingKey === def.key}
+        <div class="setting-item shortcut-row">
+          <div class="setting-info">
+            <span class="setting-name">{def.icon} {def.label}</span>
+          </div>
+          <div class="shortcut-controls">
+            {#if isRecording}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+              <div
+                class="shortcut-capture active"
+                tabindex="0"
+                onkeydown={(e) => handleShortcutKeydown(e, def.key)}
+                onblur={cancelRecording}
+              >
+                {recordingValue || 'Press keys…'}
+              </div>
+              <button type="button" class="shortcut-cancel-btn" onclick={cancelRecording} title="Cancel">✕</button>
+            {:else}
+              <button
+                type="button"
+                class="shortcut-badge"
+                class:empty={!current}
+                onclick={() => startRecording(def.key)}
+                title="Click to remap"
+              >
+                {current || 'Unset'}
+              </button>
+              {#if current}
+                <button
+                  type="button"
+                  class="shortcut-clear-btn"
+                  onclick={() => clearShortcut(def.key)}
+                  title="Clear shortcut"
+                >✕</button>
+              {/if}
+            {/if}
+          </div>
+        </div>
+      {/each}
+    </div>
+
+    <!-- Section 7: System Integration -->
     <div class="settings-group">
       <span class="group-title">System Integration</span>
 
@@ -2201,6 +2353,113 @@
 
   .reset-btn:hover {
     background: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+  }
+
+  /* ---- Keyboard Shortcuts ---- */
+  .group-desc {
+    font-size: 10.5px;
+    color: var(--island-text-secondary, #9ca3af);
+    margin: 0 0 6px 0;
+    line-height: 1.45;
+  }
+
+  .shortcut-row {
+    gap: 8px;
+  }
+
+  .shortcut-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .shortcut-badge {
+    font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+    font-size: 10.5px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: var(--island-accent, #10b981);
+    padding: 3px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    min-width: 120px;
+    text-align: center;
+  }
+
+  .shortcut-badge:hover {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: var(--island-accent, #10b981);
+    color: #ffffff;
+  }
+
+  .shortcut-badge.empty {
+    color: var(--island-text-secondary, #9ca3af);
+    font-style: italic;
+  }
+
+  .shortcut-capture {
+    font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+    font-size: 10.5px;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1.5px solid var(--island-accent, #10b981);
+    color: #ffffff;
+    padding: 3px 8px;
+    border-radius: 6px;
+    min-width: 120px;
+    text-align: center;
+    white-space: nowrap;
+    outline: none;
+    animation: shortcut-pulse 1.2s ease-in-out infinite;
+    cursor: text;
+  }
+
+  @keyframes shortcut-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.35); }
+    50%       { box-shadow: 0 0 0 3px rgba(16, 185, 129, 0); }
+  }
+
+  .shortcut-clear-btn,
+  .shortcut-cancel-btn {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--island-text-secondary, #9ca3af);
+    font-size: 9px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .shortcut-clear-btn:hover,
+  .shortcut-cancel-btn:hover {
+    background: rgba(239, 68, 68, 0.25);
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.4);
+  }
+
+  .reset-small-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--island-text-secondary, #9ca3af);
+    font-size: 9.5px;
+    padding: 2px 7px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .reset-small-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
     color: #ffffff;
   }
 </style>

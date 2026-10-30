@@ -65,6 +65,18 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   mascot_type: 'cat',
   mascot_interactive: true,
   autostart_enabled: false,
+  shortcuts: {
+    toggle: 'Super+Shift+I',
+    agent: 'Super+Shift+A',
+    media: 'Super+Shift+M',
+    git: 'Super+Shift+G',
+    system: 'Super+Shift+S',
+    clipboard: 'Super+Shift+C',
+    editor: 'Super+Shift+E',
+    docker: 'Super+Shift+D',
+    ports: 'Super+Shift+P',
+    settings: 'Super+Shift+Comma',
+  },
 };
 
 export const DASHBOARD_WIDTH = 800;
@@ -196,6 +208,7 @@ class IslandStore {
   private unlistenTrayToggle: UnlistenFn | null = null;
   private unlistenTrayCycle: UnlistenFn | null = null;
   private unlistenTraySettings: UnlistenFn | null = null;
+  private unlistenShortcut: UnlistenFn | null = null;
   private unlistenAudio: UnlistenFn | null = null;
   private unlistenClipboard: UnlistenFn | null = null;
   private unlistenSettings: UnlistenFn | null = null;
@@ -565,6 +578,24 @@ class IslandStore {
 
   async openSettings() {
     await this.setMode('settings');
+  }
+
+  /** Open a named panel by mode string — used by global keyboard shortcuts. */
+  async openPanel(panel: IslandMode) {
+    switch (panel) {
+      case 'agent':     await this.openAgent();    break;
+      case 'media':     await this.openMedia();    break;
+      case 'system':    await this.openSystem();   break;
+      case 'git':       await this.openGit();      break;
+      case 'ports':     await this.openPorts();    break;
+      case 'docker':    await this.openDocker();   break;
+      case 'settings':  await this.openSettings(); break;
+      case 'clipboard': await this.setMode('clipboard'); break;
+      case 'editor':    await this.setMode('editor');    break;
+      case 'hardware':  await this.setMode('hardware');  break;
+      case 'shelf':     await this.setMode('shelf');     break;
+      default:          await this.setMode(panel);       break;
+    }
   }
 
   async openGit() {
@@ -1518,6 +1549,22 @@ class IslandStore {
       console.debug('Failed to register tray-settings listener:', err);
     }
 
+    // Global keyboard shortcut handler
+    try {
+      this.unlistenShortcut = await listen<string>('shortcut-open-panel', async (event) => {
+        const panel = event.payload;
+        if (panel === 'toggle') {
+          await this.toggle();
+        } else if (panel === 'settings') {
+          await this.openSettings();
+        } else {
+          await this.openPanel(panel as IslandMode);
+        }
+      });
+    } catch (err) {
+      console.debug('Failed to register shortcut listener:', err);
+    }
+
     // 9. Hardware audio listener
     try {
       this.unlistenAudio = await listen<AudioStatus>('audio-status-change', async (event) => {
@@ -1633,6 +1680,10 @@ class IslandStore {
     if (this.unlistenTraySettings) {
       this.unlistenTraySettings();
       this.unlistenTraySettings = null;
+    }
+    if (this.unlistenShortcut) {
+      this.unlistenShortcut();
+      this.unlistenShortcut = null;
     }
     if (this.notificationTimeout) {
       clearTimeout(this.notificationTimeout);

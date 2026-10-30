@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{
     Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, State, WebviewWindow,
 };
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 pub struct AppState {
     pub current_monitor_name: Mutex<Option<String>>,
@@ -585,7 +586,10 @@ fn save_settings(
         let _ = app.emit("agent-status-change", &dev_ipc::AgentStatus::default());
         dev_ipc::write_state_to_disk(&state.dev_manager);
     }
-    settings::save_settings_to_disk(&settings)
+    settings::save_settings_to_disk(&settings)?;
+    // Re-register shortcuts in case they changed
+    apply_global_shortcuts(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -880,6 +884,39 @@ async fn copy_shelf_file_to_file_manager(path: String) -> Result<(), String> {
     .map_err(|e| e.to_string())?
 }
 
+/// Register (or re-register) all global keyboard shortcuts from settings.
+/// Existing shortcuts are unregistered first to handle remaps cleanly.
+fn apply_global_shortcuts(app: &tauri::AppHandle) {
+    let settings = settings::load_settings_from_disk();
+    let manager = app.global_shortcut();
+
+    // Unregister all previously registered shortcuts before re-applying
+    let _ = manager.unregister_all();
+
+    for (panel, hotkey) in &settings.shortcuts {
+        if hotkey.is_empty() {
+            continue;
+        }
+        let panel_clone = panel.clone();
+        let app_clone = app.clone();
+        match hotkey.parse::<Shortcut>() {
+            Ok(shortcut) => {
+                let result = manager.on_shortcut(shortcut, move |_app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        let _ = app_clone.emit("shortcut-open-panel", &panel_clone);
+                    }
+                });
+                if let Err(e) = result {
+                    eprintln!("[dynamic-island] Failed to register shortcut {hotkey} for {panel}: {e}");
+                }
+            }
+            Err(e) => {
+                eprintln!("[dynamic-island] Invalid shortcut format '{hotkey}' for '{panel}': {e}");
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
@@ -899,6 +936,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_drag::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(AppState {
             current_monitor_name: Mutex::new(None),
             system_tracker: Mutex::new(system::SystemTracker::new()),
@@ -992,6 +1030,9 @@ pub fn run() {
             if let Err(e) = tray::setup_tray(&app.handle()) {
                 eprintln!("[dynamic-island] Note: Tray setup failed: {e}");
             }
+
+            // Register global keyboard shortcuts
+            apply_global_shortcuts(&app.handle());
 
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_always_on_top(true);

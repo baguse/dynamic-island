@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -48,6 +49,21 @@ fn default_ambient_sky_intensity() -> String {
 
 fn default_mascot_type() -> String {
     "cat".to_string()
+}
+
+pub fn default_shortcuts() -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    map.insert("toggle".to_string(), "Super+Shift+I".to_string());
+    map.insert("agent".to_string(), "Super+Shift+A".to_string());
+    map.insert("media".to_string(), "Super+Shift+M".to_string());
+    map.insert("git".to_string(), "Super+Shift+G".to_string());
+    map.insert("system".to_string(), "Super+Shift+S".to_string());
+    map.insert("clipboard".to_string(), "Super+Shift+C".to_string());
+    map.insert("editor".to_string(), "Super+Shift+E".to_string());
+    map.insert("docker".to_string(), "Super+Shift+D".to_string());
+    map.insert("ports".to_string(), "Super+Shift+P".to_string());
+    map.insert("settings".to_string(), "Super+Shift+Comma".to_string());
+    map
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +125,8 @@ pub struct IslandSettings {
     #[serde(default = "default_true")]
     pub mascot_interactive: bool,
     pub autostart_enabled: bool,
+    #[serde(default = "default_shortcuts")]
+    pub shortcuts: HashMap<String, String>,
 }
 
 impl Default for IslandSettings {
@@ -148,6 +166,7 @@ impl Default for IslandSettings {
             mascot_type: "cat".to_string(),
             mascot_interactive: true,
             autostart_enabled: false,
+            shortcuts: default_shortcuts(),
         }
     }
 }
