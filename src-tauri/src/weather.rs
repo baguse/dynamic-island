@@ -181,9 +181,9 @@ pub fn parse_wttr_json(json_str: &str, local_hour: u32) -> Result<WeatherData, S
 }
 
 /// Fetch live weather from wttr.in with memory caching
-pub fn get_weather(city: Option<String>) -> Result<WeatherData, String> {
-    // Check cache first if no specific city requested
-    if city.is_none() {
+pub fn get_weather(city: Option<String>, force: bool) -> Result<WeatherData, String> {
+    // Check cache first if no specific city requested and not explicitly forced
+    if city.is_none() && !force {
         if let Ok(guard) = WEATHER_CACHE.lock() {
             if let Some((ref cached, ref timestamp)) = *guard {
                 if timestamp.elapsed() < CACHE_TTL {
@@ -194,7 +194,10 @@ pub fn get_weather(city: Option<String>) -> Result<WeatherData, String> {
     }
 
     let url = match &city {
-        Some(c) if !c.trim().is_empty() => format!("https://wttr.in/{}?format=j1", c.trim()),
+        Some(c) if !c.trim().is_empty() => {
+            let encoded = c.trim().replace(' ', "+");
+            format!("https://wttr.in/{}?format=j1", encoded)
+        }
         _ => "https://wttr.in/?format=j1".to_string(),
     };
 
@@ -208,6 +211,16 @@ pub fn get_weather(city: Option<String>) -> Result<WeatherData, String> {
     }
 
     let body = String::from_utf8_lossy(&output.stdout);
+    if body.trim().is_empty() {
+        return Err("Weather service returned empty response".to_string());
+    }
+    if body.contains("location not found") || body.contains("Unknown location") {
+        return Err(format!(
+            "Location '{}' not found",
+            city.as_deref().unwrap_or("specified")
+        ));
+    }
+
     let local_hour = get_local_hour();
     let data = parse_wttr_json(&body, local_hour)?;
 
@@ -222,8 +235,8 @@ pub fn get_weather(city: Option<String>) -> Result<WeatherData, String> {
 }
 
 #[tauri::command]
-pub fn fetch_weather(city: Option<String>) -> Result<WeatherData, String> {
-    get_weather(city)
+pub fn fetch_weather(city: Option<String>, force: Option<bool>) -> Result<WeatherData, String> {
+    get_weather(city, force.unwrap_or(false))
 }
 
 #[cfg(test)]

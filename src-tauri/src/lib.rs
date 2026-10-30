@@ -1138,7 +1138,7 @@ pub fn run() {
                     // 5. Weather check (initial on counter=1, then every ~15 minutes = 1125 iterations)
                     if counter == 1 || counter % 1125 == 0 {
                         let city = settings::load_settings_from_disk().weather_city;
-                        if let Ok(w) = weather::get_weather(city) {
+                        if let Ok(w) = weather::get_weather(city, false) {
                             let _ = handle.emit("weather-update", &w);
                         }
                     }

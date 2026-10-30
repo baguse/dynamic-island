@@ -253,16 +253,44 @@
   const weatherIcon = $derived(getWeatherIcon(weather?.condition, weather?.time_period));
 
   let cityInput = $state('');
+  let isSavingCity = $state(false);
+  let cityFeedback = $state<{ type: 'success' | 'error'; message: string } | null>(null);
+  let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => {
     cityInput = settings.weather_city || '';
   });
 
   async function handleSaveCity() {
+    if (isSavingCity) return;
     const trimmed = cityInput.trim();
     const newCity = trimmed.length > 0 ? trimmed : null;
+
+    isSavingCity = true;
+    cityFeedback = null;
+    if (feedbackTimer) clearTimeout(feedbackTimer);
+
+    // Save persistent setting
     await islandState.updateSettings({ weather_city: newCity });
-    await islandState.refreshWeather(newCity || undefined);
+
+    // Fetch live weather bypassing cache
+    const res = await islandState.refreshWeather(newCity || undefined, true);
+    isSavingCity = false;
+
+    if (res.success) {
+      cityFeedback = {
+        type: 'success',
+        message: newCity ? `Weather updated for ${newCity}` : 'Weather updated (auto-detect location)',
+      };
+      feedbackTimer = setTimeout(() => {
+        cityFeedback = null;
+      }, 4000);
+    } else {
+      cityFeedback = {
+        type: 'error',
+        message: res.error || 'Failed to fetch weather for this location',
+      };
+    }
   }
 
   let previewMascotMood = $state<MascotState | undefined>(undefined);
@@ -930,7 +958,7 @@
         </div>
 
         <!-- Live Weather Status Card & City Config -->
-        <div class="weather-dashboard-card">
+        <div class="weather-dashboard-card" class:weather-updating={islandState.isWeatherLoading && !isSavingCity}>
           {#if weather}
             <div class="weather-main-row">
               <div class="weather-left-info">
@@ -948,15 +976,17 @@
                 <button
                   type="button"
                   class="weather-refresh-btn"
-                  onclick={() => islandState.refreshWeather()}
+                  class:loading={islandState.isWeatherLoading}
+                  disabled={islandState.isWeatherLoading || isSavingCity}
+                  onclick={() => islandState.refreshWeather(undefined, true)}
                   title="Query latest weather from wttr.in"
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <svg class:spin={islandState.isWeatherLoading} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="23 4 23 10 17 10"></polyline>
                     <polyline points="1 20 1 14 7 14"></polyline>
                     <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                   </svg>
-                  <span>Refresh</span>
+                  <span>{islandState.isWeatherLoading ? 'Fetching...' : 'Refresh'}</span>
                 </button>
               </div>
             </div>
@@ -989,7 +1019,7 @@
             </div>
           {:else}
             <div class="weather-loading-row">
-              <span class="weather-loading-icon">🌤️</span>
+              <span class="spinner-small"></span>
               <span>Fetching live local weather...</span>
             </div>
           {/if}
@@ -997,18 +1027,48 @@
           <!-- City Override Input -->
           <div class="weather-city-input-row">
             <span class="city-input-label">City:</span>
-            <input
-              type="text"
-              class="city-text-input"
-              placeholder="e.g. London, Tokyo (blank for auto IP)"
-              value={cityInput}
-              oninput={(e) => { cityInput = (e.target as HTMLInputElement).value; }}
-              onkeydown={(e) => { if (e.key === 'Enter') handleSaveCity(); }}
-            />
-            <button type="button" class="btn-save-city" onclick={handleSaveCity}>
-              Save
+            <div class="city-input-wrapper">
+              <input
+                type="text"
+                class="city-text-input"
+                class:has-error={cityFeedback?.type === 'error'}
+                placeholder="e.g. London, Tokyo (blank for auto IP)"
+                value={cityInput}
+                disabled={isSavingCity}
+                oninput={(e) => {
+                  cityInput = (e.target as HTMLInputElement).value;
+                  if (cityFeedback) cityFeedback = null;
+                }}
+                onkeydown={(e) => { if (e.key === 'Enter') handleSaveCity(); }}
+              />
+              {#if isSavingCity}
+                <div class="city-input-spinner-wrapper">
+                  <span class="spinner-small"></span>
+                </div>
+              {/if}
+            </div>
+            <button
+              type="button"
+              class="btn-save-city"
+              class:saving={isSavingCity}
+              disabled={isSavingCity}
+              onclick={handleSaveCity}
+            >
+              {#if isSavingCity}
+                <span class="spinner-small"></span>
+                <span>Saving...</span>
+              {:else}
+                <span>Save</span>
+              {/if}
             </button>
           </div>
+
+          {#if cityFeedback}
+            <div class="city-feedback-msg {cityFeedback.type}">
+              <span class="feedback-icon">{cityFeedback.type === 'success' ? '✓' : '⚠️'}</span>
+              <span>{cityFeedback.message}</span>
+            </div>
+          {/if}
         </div>
       {/if}
     </div>
@@ -2043,6 +2103,15 @@
     white-space: nowrap;
   }
 
+  .weather-dashboard-card {
+    transition: opacity 0.2s ease;
+  }
+
+  .weather-dashboard-card.weather-updating {
+    opacity: 0.7;
+    pointer-events: none;
+  }
+
   .weather-refresh-btn {
     display: flex;
     align-items: center;
@@ -2058,10 +2127,15 @@
     transition: all 0.15s ease;
   }
 
-  .weather-refresh-btn:hover {
+  .weather-refresh-btn:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.14);
     color: #ffffff;
     border-color: rgba(255, 255, 255, 0.25);
+  }
+
+  .weather-refresh-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .weather-details-grid {
@@ -2120,8 +2194,15 @@
     flex-shrink: 0;
   }
 
-  .city-text-input {
+  .city-input-wrapper {
+    position: relative;
     flex: 1;
+    display: flex;
+    align-items: center;
+  }
+
+  .city-text-input {
+    width: 100%;
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 6px;
@@ -2132,12 +2213,29 @@
     transition: border-color 0.15s ease;
   }
 
+  .city-text-input:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+
   .city-text-input:focus {
     border-color: var(--island-accent, #3b82f6);
   }
 
+  .city-text-input.has-error {
+    border-color: rgba(239, 68, 68, 0.6);
+  }
+
   .city-text-input::placeholder {
     color: rgba(255, 255, 255, 0.3);
+  }
+
+  .city-input-spinner-wrapper {
+    position: absolute;
+    right: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .btn-save-city {
@@ -2150,11 +2248,67 @@
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
   }
 
-  .btn-save-city:hover {
+  .btn-save-city:hover:not(:disabled) {
     background: rgba(59, 130, 246, 0.35);
     color: #ffffff;
+  }
+
+  .btn-save-city:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .spinner-small {
+    width: 11px;
+    height: 11px;
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: weather-spin 0.65s linear infinite;
+    display: inline-block;
+  }
+
+  .spin {
+    animation: weather-spin 0.8s linear infinite;
+  }
+
+  @keyframes weather-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .city-feedback-msg {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 5px;
+    margin-top: 4px;
+    animation: fadeIn 0.15s ease-out;
+  }
+
+  .city-feedback-msg.success {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+
+  .city-feedback-msg.error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+
+  .feedback-icon {
+    font-size: 10.5px;
+    line-height: 1;
   }
 
   /* Desktop Cyber-Pet Styles */

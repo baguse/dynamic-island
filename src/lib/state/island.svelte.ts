@@ -111,6 +111,7 @@ class IslandStore {
   private expandAnimationTimer: ReturnType<typeof setTimeout> | null = null;
   currentMedia = $state<MediaMetadata | null>(null);
   weather = $state<WeatherData | null>(null);
+  isWeatherLoading = $state<boolean>(false);
   audioSpectrum = $state<AudioSpectrumData>({
     bands: [0, 0, 0, 0, 0],
     energy: 0,
@@ -1303,16 +1304,24 @@ class IslandStore {
     }
   }
 
-  async refreshWeather(city?: string) {
+  async refreshWeather(city?: string, force = false): Promise<{ success: boolean; error?: string }> {
+    this.isWeatherLoading = true;
     try {
       const data = await invoke<WeatherData>('fetch_weather', {
         city: city !== undefined ? city : (this.settings.weather_city ?? null),
+        force,
       });
       if (data) {
         this.weather = data;
+        return { success: true };
       }
-    } catch (err) {
+      return { success: false, error: 'No data returned' };
+    } catch (err: unknown) {
       console.debug('refreshWeather note:', err);
+      const msg = typeof err === 'string' ? err : ((err as Error)?.message || 'Failed to fetch weather');
+      return { success: false, error: msg };
+    } finally {
+      this.isWeatherLoading = false;
     }
   }
 
