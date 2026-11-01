@@ -509,6 +509,32 @@ def cmd_todo(args):
         print(f"✓ Synced {resp.get('count', 0)} tasks from markdown.")
 
     return 0
+
+def cmd_focus(args):
+    action = getattr(args, "focus_action", None) or "start"
+    payload = {"target": "focus", "action": action}
+    if action == "start":
+        mins = getattr(args, "minutes", 25) or 25
+        payload["minutes"] = mins
+        label = getattr(args, "label", None)
+        if label:
+            payload["label"] = label
+        print(f"🔥 Starting focus session for {mins} minutes ({label or 'Locking In'})...")
+    elif action == "stop":
+        print("💀 Stopping focus session...")
+    elif action == "pause":
+        print("⏸ Pausing focus session...")
+    elif action == "resume":
+        print("▶ Resuming focus session...")
+    elif action == "open":
+        print("🔥 Opening Focus Mode dashboard...")
+
+    res = send_ipc(payload)
+    if not res:
+        print("Error: Could not connect to Dynamic Island. Is it running?")
+        return 1
+    print(f"✓ Dynamic Island: Focus mode {action} executed")
+    return 0
     stopped = [c for c in containers if not c.get("is_running")]
     print(f"Docker Containers ({len(running)} running, {len(stopped)} stopped):")
     for c in containers:
@@ -1345,6 +1371,19 @@ def main():
     notify_parser.add_argument("--icon", choices=["message", "terminal", "system"], default="terminal")
     notify_parser.add_argument("--duration", type=int, default=4500, help="Display duration in ms")
 
+    # Focus sub-command
+    p_focus = subparsers.add_parser("focus", help="Control Focus / Pomodoro Mode")
+    focus_subs = p_focus.add_subparsers(dest="focus_action")
+
+    p_focus_start = focus_subs.add_parser("start", help="Start a focus session")
+    p_focus_start.add_argument("minutes", type=int, nargs="?", default=25, help="Duration in minutes (default: 25)")
+    p_focus_start.add_argument("--label", "-l", help="Custom label or tag (e.g. 'Deep Work')")
+
+    p_focus_stop = focus_subs.add_parser("stop", help="Stop / abort focus session")
+    p_focus_pause = focus_subs.add_parser("pause", help="Pause focus timer")
+    p_focus_resume = focus_subs.add_parser("resume", help="Resume focus timer")
+    p_focus_open = focus_subs.add_parser("open", help="Open Focus Mode dashboard")
+
     args = parser.parse_args()
 
     if args.subcommand == "toggle":
@@ -1375,6 +1414,8 @@ def main():
         sys.exit(cmd_docker(args))
     elif args.subcommand == "todo":
         sys.exit(cmd_todo(args))
+    elif args.subcommand == "focus":
+        sys.exit(cmd_focus(args))
     elif args.subcommand == "build":
         sys.exit(cmd_build(args))
     elif args.subcommand == "notify":

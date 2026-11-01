@@ -138,6 +138,13 @@ pub enum IpcMessage {
     ReviewDecision {
         decision: bool,
     },
+    Focus {
+        action: String,
+        #[serde(default)]
+        minutes: Option<u32>,
+        #[serde(default)]
+        label: Option<String>,
+    },
     #[serde(rename = "git_refresh")]
     GitRefresh,
     #[serde(rename = "ports")]
@@ -732,6 +739,22 @@ pub fn process_ipc_message(
                 return r#"{"ok":true,"suppressed":true}"#.to_string();
             }
             dev_manager.resolve_review(Some(app_handle), decision);
+            r#"{"ok":true}"#.to_string()
+        }
+
+        IpcMessage::Focus {
+            action,
+            minutes,
+            label,
+        } => {
+            let _ = app_handle.emit(
+                "focus-command",
+                serde_json::json!({
+                    "action": action,
+                    "minutes": minutes,
+                    "label": label,
+                }),
+            );
             r#"{"ok":true}"#.to_string()
         }
 

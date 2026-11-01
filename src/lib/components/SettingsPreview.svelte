@@ -19,6 +19,7 @@
     clipboard: { label: 'Quick Clipboard & Snippets', icon: '📋', settingKey: 'show_clipboard_in_pill' },
     shelf: { label: 'Desktop Drop Shelf', icon: '📁', settingKey: 'show_shelf_in_pill' },
     todo: { label: 'To-Do List & Tasks', icon: '📝', settingKey: 'show_todo_in_pill' },
+    focus: { label: 'Focus Mode & Pomodoro', icon: '🔥', settingKey: 'show_focus_in_pill' },
   };
 
   interface ThemeDef {
@@ -230,6 +231,8 @@
       islandState.updateSettings({ show_clipboard_in_pill: !settings.show_clipboard_in_pill });
     } else if (module === 'todo') {
       islandState.updateSettings({ show_todo_in_pill: !settings.show_todo_in_pill });
+    } else if (module === 'focus') {
+      islandState.updateSettings({ show_focus_in_pill: !settings.show_focus_in_pill });
     } else if (module === 'autostart') {
       islandState.updateSettings({ autostart_enabled: !settings.autostart_enabled });
     }

@@ -1,4 +1,4 @@
-export type IslandMode = 'idle' | 'expanded' | 'agent' | 'media' | 'notification' | 'system' | 'settings' | 'git' | 'editor' | 'ports' | 'docker' | 'hardware' | 'clipboard' | 'shelf' | 'todo';
+export type IslandMode = 'idle' | 'expanded' | 'agent' | 'media' | 'notification' | 'system' | 'settings' | 'git' | 'editor' | 'ports' | 'docker' | 'hardware' | 'clipboard' | 'shelf' | 'todo' | 'focus';
 
 export interface IslandDimensions {
   width: number;
@@ -174,9 +174,22 @@ export const DEFAULT_MODULE_ORDER = [
   'clipboard',
   'shelf',
   'todo',
+  'focus',
 ] as const;
 
 export type ModuleKey = (typeof DEFAULT_MODULE_ORDER)[number];
+
+export interface FocusSession {
+  isActive: boolean;
+  isPaused: boolean;
+  totalDurationSeconds: number;
+  remainingSeconds: number;
+  label: string;
+  presetMinutes: number;
+  startedAt: number;
+  completedCountToday: number;
+  totalMinutesToday: number;
+}
 
 export interface IslandSettings {
   theme: IslandTheme;
@@ -200,6 +213,7 @@ export interface IslandSettings {
   show_shelf_in_pill: boolean;
   show_clipboard_in_pill: boolean;
   show_todo_in_pill: boolean;
+  show_focus_in_pill: boolean;
   module_order: string[];
   watched_repo_path?: string | null;
   show_media_companion: boolean;

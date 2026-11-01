@@ -25,12 +25,46 @@ import {
   type ShelfItem,
   type TodoItem,
   type TodoPriority,
+  type FocusSession,
   type ModuleKey,
   type AudioSpectrumData,
   type WeatherData,
   type SkyTheme,
   type SkyIntensity,
 } from '../types';
+
+export const FUNNY_FOCUS_QUOTES = [
+  "🚫 No Reddit allowed. Seriously.",
+  "🔥 Bro is actually locking in!",
+  "🧠 Brain cells overclocked to 5.2GHz",
+  "👀 Looking at Twitter? I see you.",
+  "💀 If you Alt+Tab right now, you lose",
+  "☕ Turning caffeine into questionable code",
+  "🤫 Shh... Genius at work (allegedly)",
+  "🦆 The Rubber Duck is monitoring you",
+  "⏳ Suffering in progress... please wait",
+  "🛑 404: Distractions Not Found",
+  "🎯 In Monk Mode, mortals cannot reach you",
+  "⚡ 99% Pure Focus • 1% Panic",
+  "💻 Stop tweaking CSS and ship it",
+  "🧘 Breathe in competence, breathe out bugs",
+  "🚨 Procrastination police on patrol",
+  "👾 Bug fixing speedrun (Any %)",
+  "🏃 Sprinting through deadlines like Usain Bolt"
+];
+
+export const FUNNY_FOCUS_EXCUSES = [
+  "Can't talk right now, currently refactoring the spacetime continuum.",
+  "My rubber duck strictly advised against any context switching.",
+  "In the middle of a delicate git rebase with destiny.",
+  "Brain currently compiling at 100% capacity. ETA: whenever.",
+  "Quantum focus state active. Observing me will collapse my progress.",
+  "Busy preventing production from turning into a dumpster fire.",
+  "Currently in Monk Mode. Ascending to a higher dimension of productivity.",
+  "Fixing a bug that only exists when someone is looking at my screen.",
+  "Under strict orders from my Dynamic Island mascot to ignore humans.",
+  "Waiting for npm install to finish. It has been 84 years."
+];
 
 export const DEFAULT_SETTINGS: IslandSettings = {
   theme: 'dark',
@@ -54,6 +88,7 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   show_shelf_in_pill: true,
   show_clipboard_in_pill: true,
   show_todo_in_pill: true,
+  show_focus_in_pill: true,
   module_order: [...DEFAULT_MODULE_ORDER],
   watched_repo_path: null,
   show_media_companion: true,
@@ -79,6 +114,7 @@ export const DEFAULT_SETTINGS: IslandSettings = {
     docker: 'Super+Shift+D',
     ports: 'Super+Shift+P',
     todo: 'Super+Shift+T',
+    focus: 'Super+Shift+F',
     settings: 'Super+Shift+Comma',
   },
 };
@@ -102,6 +138,7 @@ export const BASE_DIMENSIONS: Record<IslandMode, IslandDimensions> = {
   clipboard: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
   shelf: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
   todo: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
+  focus: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
 };
 
 class IslandStore {
@@ -319,6 +356,7 @@ class IslandStore {
   }
 
   get activePillModule(): ModuleKey | null {
+    if (this.isFocusActive && this.settings.show_focus_in_pill !== false) return 'focus';
     for (const key of this.moduleOrder) {
       if (key === 'build' && this.hasActiveBuild && this.settings.show_build_in_pill) return 'build';
       if (key === 'agent' && this.hasActiveAgent) return 'agent';
@@ -332,6 +370,7 @@ class IslandStore {
   get targetWidth(): number {
     if (this.mode === 'idle' || this.isCollapsing) {
       const active = this.activePillModule;
+      if (active === 'focus') return 340;
       if (active === 'agent') return 340;
       if (active === 'editor') return 340;
       if (active === 'build') return 330;
@@ -420,12 +459,17 @@ class IslandStore {
 
   async expand() {
     let targetMode: IslandMode;
-    if (this.hasActiveAgent) {
+    const activePill = this.activePillModule;
+    if (this.isFocusActive) {
+      targetMode = 'focus';
+    } else if (activePill === 'agent' || activePill === 'build') {
       targetMode = 'agent';
-    } else if (this.hasActiveMedia) {
+    } else if (activePill === 'media') {
       targetMode = 'media';
-    } else if (this.hasActiveBuild) {
-      targetMode = 'agent';
+    } else if (activePill === 'git') {
+      targetMode = 'git';
+    } else if (activePill === 'editor') {
+      targetMode = 'editor';
     } else if (this.lastActiveDashboardModule && this.lastActiveDashboardModule !== 'build') {
       targetMode = this.lastActiveDashboardModule as IslandMode;
     } else {
@@ -612,6 +656,7 @@ class IslandStore {
       case 'hardware':  await this.setMode('hardware');  break;
       case 'shelf':     await this.setMode('shelf');     break;
       case 'todo':      await this.openTodo();          break;
+      case 'focus':     await this.openFocus();         break;
       default:          await this.setMode(panel);       break;
     }
   }
@@ -1035,6 +1080,200 @@ class IslandStore {
       console.error('Failed to sync todos from markdown:', err);
       throw err;
     }
+  }
+
+  // --- Focus Mode Module ---
+
+  focusSession = $state<FocusSession>({
+    isActive: false,
+    isPaused: false,
+    totalDurationSeconds: 25 * 60,
+    remainingSeconds: 25 * 60,
+    label: 'Locking In',
+    presetMinutes: 25,
+    startedAt: 0,
+    completedCountToday: 0,
+    totalMinutesToday: 0,
+  });
+
+  private focusTimer: ReturnType<typeof setInterval> | null = null;
+  private unlistenFocus: UnlistenFn | null = null;
+
+  get isFocusActive(): boolean {
+    return this.focusSession.isActive;
+  }
+
+  get isFocusPaused(): boolean {
+    return this.focusSession.isPaused;
+  }
+
+  get focusRemainingFormatted(): string {
+    const mins = Math.floor(this.focusSession.remainingSeconds / 60);
+    const secs = this.focusSession.remainingSeconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+
+  get focusProgress(): number {
+    if (this.focusSession.totalDurationSeconds <= 0) return 0;
+    const elapsed = this.focusSession.totalDurationSeconds - this.focusSession.remainingSeconds;
+    return Math.min(100, Math.max(0, (elapsed / this.focusSession.totalDurationSeconds) * 100));
+  }
+
+  startFocus(minutes: number = 25, label?: string) {
+    this.stopFocusInterval();
+    const durationSec = Math.max(1, minutes) * 60;
+    this.focusSession.isActive = true;
+    this.focusSession.isPaused = false;
+    this.focusSession.totalDurationSeconds = durationSec;
+    this.focusSession.remainingSeconds = durationSec;
+    this.focusSession.presetMinutes = minutes;
+    this.focusSession.label = label || this.getRandomFocusTag();
+    this.focusSession.startedAt = Date.now();
+    this.lastActiveDashboardModule = 'focus';
+
+    this.focusTimer = setInterval(() => {
+      this.tickFocus();
+    }, 1000);
+
+    if (this.mode === 'idle') {
+      this.syncNativeWindow();
+    } else {
+      this.setMode('focus');
+    }
+
+    this.showNotification({
+      id: `focus-start-${Date.now()}`,
+      title: '🔥 Focus Mode Activated',
+      message: `${minutes}m session started. Zero excuses, lock in!`,
+      app_name: 'Focus Companion',
+      duration_ms: 3500,
+    });
+  }
+
+  pauseFocus() {
+    this.focusSession.isPaused = true;
+    this.stopFocusInterval();
+  }
+
+  resumeFocus() {
+    if (!this.focusSession.isActive) return;
+    this.focusSession.isPaused = false;
+    this.stopFocusInterval();
+    this.focusTimer = setInterval(() => {
+      this.tickFocus();
+    }, 1000);
+  }
+
+  stopFocus(giveUp = false) {
+    this.stopFocusInterval();
+    const wasActive = this.focusSession.isActive;
+    this.focusSession.isActive = false;
+    this.focusSession.isPaused = false;
+    this.focusSession.remainingSeconds = this.focusSession.totalDurationSeconds;
+
+    if (this.mode === 'idle') {
+      this.syncNativeWindow();
+    }
+
+    if (giveUp && wasActive) {
+      this.showNotification({
+        id: `focus-giveup-${Date.now()}`,
+        title: '💀 Focus Session Abandoned',
+        message: 'The distractions won this round. Regroup and try again!',
+        app_name: 'Focus Companion',
+        duration_ms: 4500,
+      });
+    }
+  }
+
+  extendFocus(minutes: number = 5) {
+    if (!this.focusSession.isActive) return;
+    const addSec = minutes * 60;
+    this.focusSession.remainingSeconds += addSec;
+    this.focusSession.totalDurationSeconds += addSec;
+  }
+
+  private tickFocus() {
+    if (!this.focusSession.isActive || this.focusSession.isPaused) return;
+    if (this.focusSession.remainingSeconds > 1) {
+      this.focusSession.remainingSeconds -= 1;
+    } else {
+      this.completeFocus();
+    }
+  }
+
+  private completeFocus() {
+    this.stopFocusInterval();
+    const finishedMins = Math.round(this.focusSession.totalDurationSeconds / 60);
+    this.focusSession.isActive = false;
+    this.focusSession.isPaused = false;
+    this.focusSession.remainingSeconds = 0;
+    this.focusSession.completedCountToday += 1;
+    this.focusSession.totalMinutesToday += finishedMins;
+    this.saveFocusStatsToStorage();
+
+    if (this.mode === 'idle') {
+      this.syncNativeWindow();
+    }
+
+    this.showNotification({
+      id: `focus-complete-${Date.now()}`,
+      title: '🎉 Focus Session Survived!',
+      message: `Completed ${finishedMins}m of pure locked-in focus. Touch grass & hydrate! 🌱`,
+      app_name: 'Focus Companion',
+      duration_ms: 6000,
+    });
+  }
+
+  private stopFocusInterval() {
+    if (this.focusTimer) {
+      clearInterval(this.focusTimer);
+      this.focusTimer = null;
+    }
+  }
+
+  private getRandomFocusTag(): string {
+    const tags = ['Locking In', 'Deep Work', 'Cooking Code', 'Monk Mode', 'Speedrun', 'Zero Distraction'];
+    return tags[Math.floor(Math.random() * tags.length)];
+  }
+
+  getRandomExcuse(): string {
+    return FUNNY_FOCUS_EXCUSES[Math.floor(Math.random() * FUNNY_FOCUS_EXCUSES.length)];
+  }
+
+  loadFocusStatsFromStorage() {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      const todayStr = new Date().toISOString().split('T')[0];
+      const raw = localStorage.getItem(`dynamic-island-focus-${todayStr}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        this.focusSession.completedCountToday = parsed.count || 0;
+        this.focusSession.totalMinutesToday = parsed.minutes || 0;
+      }
+    } catch (e) {
+      console.debug('Failed to load focus stats:', e);
+    }
+  }
+
+  saveFocusStatsToStorage() {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      const todayStr = new Date().toISOString().split('T')[0];
+      localStorage.setItem(
+        `dynamic-island-focus-${todayStr}`,
+        JSON.stringify({
+          count: this.focusSession.completedCountToday,
+          minutes: this.focusSession.totalMinutesToday,
+        })
+      );
+    } catch (e) {
+      console.debug('Failed to save focus stats:', e);
+    }
+  }
+
+  async openFocus() {
+    await this.setMode('focus');
   }
 
   async updateSettings(partial: Partial<IslandSettings>) {
@@ -1734,6 +1973,32 @@ class IslandStore {
       console.debug('Failed to register todos listener:', err);
     }
 
+    // Live Focus Command listener & load daily stats
+    this.loadFocusStatsFromStorage();
+    try {
+      this.unlistenFocus = await listen<{ action: string; minutes?: number; label?: string }>(
+        'focus-command',
+        (event) => {
+          if (event.payload) {
+            const { action, minutes, label } = event.payload;
+            if (action === 'start') {
+              this.startFocus(minutes || 25, label);
+            } else if (action === 'stop') {
+              this.stopFocus(true);
+            } else if (action === 'pause') {
+              this.pauseFocus();
+            } else if (action === 'resume') {
+              this.resumeFocus();
+            } else if (action === 'open') {
+              this.openFocus();
+            }
+          }
+        }
+      );
+    } catch (err) {
+      console.debug('Failed to register focus listener:', err);
+    }
+
     // 11. Initial samples
     this.refreshPorts();
     this.refreshDocker();
@@ -1835,6 +2100,11 @@ class IslandStore {
       this.unlistenShortcut();
       this.unlistenShortcut = null;
     }
+    if (this.unlistenFocus) {
+      this.unlistenFocus();
+      this.unlistenFocus = null;
+    }
+    this.stopFocusInterval();
     if (this.notificationTimeout) {
       clearTimeout(this.notificationTimeout);
       this.notificationTimeout = null;

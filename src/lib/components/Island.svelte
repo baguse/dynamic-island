@@ -18,9 +18,11 @@
   import ClipboardPreview from './ClipboardPreview.svelte';
   import DropShelfPreview from './DropShelfPreview.svelte';
   import TodoPreview from './TodoPreview.svelte';
+  import FocusPreview from './FocusPreview.svelte';
   import AudioEqualizer from './AudioEqualizer.svelte';
   import AmbientSkyCanvas from './AmbientSkyCanvas.svelte';
   import PixelMascot from './PixelMascot.svelte';
+  import { FUNNY_FOCUS_QUOTES } from '../state/island.svelte';
 
   const media = $derived(islandState.currentMedia);
   const telemetry = $derived(islandState.telemetry);
@@ -36,7 +38,7 @@
   const clipboardCount = $derived(islandState.clipboardHistoryCount);
   const weather = $derived(islandState.weather);
   const activePanelMode = $derived(
-    islandState.activePanel || (islandState.mode !== 'idle' ? islandState.mode : islandState.previousMode)
+    islandState.activePanel || (islandState.mode !== 'idle' ? islandState.mode : (islandState.isFocusActive ? 'focus' : islandState.previousMode))
   );
 
   function getWeatherIcon(condition?: string, timePeriod?: string): string {
@@ -53,10 +55,19 @@
 
   const weatherIcon = $derived(getWeatherIcon(weather?.condition, weather?.time_period));
 
+  let funnyQuoteIdx = $state(0);
+  let funnyQuoteTimer: ReturnType<typeof setInterval> | null = null;
+  const currentFunnyQuote = $derived(FUNNY_FOCUS_QUOTES[funnyQuoteIdx % FUNNY_FOCUS_QUOTES.length]);
+
   let unlistenDragDrop: UnlistenFn | null = null;
   let isSurfaceDragOver = $state(false);
 
   onMount(async () => {
+    funnyQuoteTimer = setInterval(() => {
+      if (islandState.isFocusActive) {
+        funnyQuoteIdx = (funnyQuoteIdx + 1) % FUNNY_FOCUS_QUOTES.length;
+      }
+    }, 4500);
     try {
       unlistenDragDrop = await getCurrentWebview().onDragDropEvent(async (event) => {
         if (event.payload.type === 'enter' || event.payload.type === 'over') {
@@ -77,6 +88,10 @@
   });
 
   onDestroy(() => {
+    if (funnyQuoteTimer) {
+      clearInterval(funnyQuoteTimer);
+      funnyQuoteTimer = null;
+    }
     if (unlistenDragDrop) {
       unlistenDragDrop();
       unlistenDragDrop = null;
@@ -168,7 +183,11 @@
       return;
     }
     if (islandState.mode === 'idle' || islandState.isCollapsing) {
-      islandState.expand();
+      if (islandState.isFocusActive) {
+        islandState.openFocus();
+      } else {
+        islandState.expand();
+      }
     }
   }
 
@@ -244,6 +263,11 @@
     islandState.openTodo();
   }
 
+  function handleOpenFocus(e?: MouseEvent) {
+    if (e) e.stopPropagation();
+    islandState.openFocus();
+  }
+
   function handleToggleMic(e: MouseEvent) {
     e.stopPropagation();
     islandState.toggleMicMute();
@@ -301,7 +325,10 @@
   class:hardware={islandState.mode === 'hardware' && !islandState.isCollapsing}
   class:clipboard={islandState.mode === 'clipboard' && !islandState.isCollapsing}
   class:shelf={islandState.mode === 'shelf' && !islandState.isCollapsing}
+  class:todo={islandState.mode === 'todo' && !islandState.isCollapsing}
+  class:focus={islandState.mode === 'focus' && !islandState.isCollapsing}
   class:surface-drag-over={isSurfaceDragOver}
+  class:focus-active={(islandState.mode === 'idle' || islandState.isCollapsing) && islandState.isFocusActive}
   class:dev-build-active={(islandState.mode === 'idle' || islandState.isCollapsing) && islandState.hasActiveBuild}
   class:agent-active={(islandState.mode === 'idle' || islandState.isCollapsing) && islandState.hasActiveAgent}
   class:media-active={(islandState.mode === 'idle' || islandState.isCollapsing) && islandState.hasActiveMedia}
@@ -335,7 +362,24 @@
       class:is-collapsing={islandState.isCollapsing}
       class:is-expanding={islandState.isExpanding}
     >
-      {#if islandState.activePillModule === 'build'}
+      {#if islandState.activePillModule === 'focus' && islandState.isFocusActive}
+        <!-- Compact Pill with Active Focus Mode (Funny UI) -->
+        <div class="pill-content focus-pill">
+          <div class="pill-left">
+            <PixelMascot size="sm" stateOverride="typing" />
+            <span class="focus-flame-icon" class:pulsing={!islandState.isFocusPaused} aria-hidden="true">🔥</span>
+            <div class="pill-media-text focus-pill-text">
+              <span class="pill-track-title focus-time-digits">{islandState.focusRemainingFormatted}</span>
+              <span class="pill-track-artist focus-quote-text">{currentFunnyQuote}</span>
+            </div>
+          </div>
+          <div class="pill-right">
+            <span class="pill-badge pill-badge-focus">
+              {islandState.isFocusPaused ? '⏸ Paused' : '🔥 Focus'}
+            </span>
+          </div>
+        </div>
+      {:else if islandState.activePillModule === 'build'}
         <!-- Compact Pill with Active Terminal Build -->
         <div class="pill-content">
           <div class="pill-left">
@@ -347,14 +391,9 @@
             </div>
           </div>
           <div class="pill-right">
-            <button
-              type="button"
-              class="pill-badge pill-badge-build"
-              onclick={(e) => { e.stopPropagation(); islandState.clearBuild(); }}
-              title="Click to clear build indicator"
-            >
+            <span class="pill-badge pill-badge-build">
               ⚡ Build
-            </button>
+            </span>
           </div>
         </div>
       {:else if islandState.activePillModule === 'agent'}
@@ -391,49 +430,32 @@
           </div>
 
           <div class="pill-right">
-            <button
-              type="button"
-              class="pill-quick-ctrl"
-              onclick={handleTogglePlay}
-              aria-label={islandState.isPlaying ? 'Pause' : 'Play'}
-              title={islandState.isPlaying ? 'Pause' : 'Play'}
-            >
-              {#if islandState.isPlaying}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="6" y="4" width="4" height="16" rx="1"></rect>
-                  <rect x="14" y="4" width="4" height="16" rx="1"></rect>
-                </svg>
-              {:else}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                </svg>
-              {/if}
-            </button>
+            <span class="pill-badge pill-badge-media">
+              {islandState.isPlaying ? '▶ Playing' : '⏸ Paused'}
+            </span>
           </div>
         </div>
       {:else if islandState.activePillModule === 'git'}
         <!-- Compact Pill with Git Status -->
         <div class="pill-content">
-          <button type="button" class="pill-media-main-btn" onclick={handleOpenGit}>
-            <div class="pill-left">
-              <svg class="git-pill-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="6" y1="3" x2="6" y2="15"></line>
-                <circle cx="18" cy="6" r="3"></circle>
-                <circle cx="6" cy="18" r="3"></circle>
-                <path d="M18 9a9 9 0 0 1-9 9"></path>
-              </svg>
-              <div class="pill-media-text">
-                <span class="pill-track-title">{git.branch || 'git'}</span>
-                <span class="pill-track-artist">
-                  {#if islandState.gitDirtyCount > 0}
-                    *{islandState.gitDirtyCount} dirty
-                  {:else}
-                    clean
-                  {/if}
-                </span>
-              </div>
+          <div class="pill-left">
+            <svg class="git-pill-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="6" y1="3" x2="6" y2="15"></line>
+              <circle cx="18" cy="6" r="3"></circle>
+              <circle cx="6" cy="18" r="3"></circle>
+              <path d="M18 9a9 9 0 0 1-9 9"></path>
+            </svg>
+            <div class="pill-media-text">
+              <span class="pill-track-title">{git.branch || 'git'}</span>
+              <span class="pill-track-artist">
+                {#if islandState.gitDirtyCount > 0}
+                  *{islandState.gitDirtyCount} dirty
+                {:else}
+                  clean
+                {/if}
+              </span>
             </div>
-          </button>
+          </div>
           <div class="pill-right">
             {#if git.ahead > 0 || git.behind > 0}
               <span class="pill-badge pill-badge-git" title="{git.ahead} to push, {git.behind} to pull">
@@ -449,18 +471,16 @@
       {:else if islandState.activePillModule === 'editor' && editor}
         <!-- Compact Pill with Editor Presence -->
         <div class="pill-content">
-          <button type="button" class="pill-media-main-btn" onclick={handleOpenEditor}>
-            <div class="pill-left">
-              <svg class="editor-pill-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="16 18 22 12 16 6"></polyline>
-                <polyline points="8 6 2 12 8 18"></polyline>
-              </svg>
-              <div class="pill-media-text">
-                <span class="pill-track-title">{editor.file_name}</span>
-                <span class="pill-track-artist">{editor.workspace || editor.editor}</span>
-              </div>
+          <div class="pill-left">
+            <svg class="editor-pill-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 18 22 12 16 6"></polyline>
+              <polyline points="8 6 2 12 8 18"></polyline>
+            </svg>
+            <div class="pill-media-text">
+              <span class="pill-track-title">{editor.file_name}</span>
+              <span class="pill-track-artist">{editor.workspace || editor.editor}</span>
             </div>
-          </button>
+          </div>
           <div class="pill-right">
             {#if editor.line}
               <span class="pill-badge pill-badge-editor">:{editor.line}</span>
@@ -479,35 +499,29 @@
           </div>
           <div class="pill-right">
             {#if isMicMuted && settings.show_mic_in_pill}
-              <button
-                type="button"
+              <span
                 class="pill-badge pill-badge-mic-muted"
-                onclick={handleToggleMic}
-                title="Microphone is MUTED (Click to Unmute)"
+                title="Microphone is MUTED"
               >
                 <span class="mic-dot-pulse" aria-hidden="true"></span>
                 🎤 Muted
-              </button>
+              </span>
             {/if}
             {#if shelfCount > 0 && settings.show_shelf_in_pill}
-              <button
-                type="button"
+              <span
                 class="pill-badge pill-badge-shelf"
-                onclick={handleOpenShelf}
                 title="{shelfCount} items parked on shelf"
               >
                 📁 {shelfCount}
-              </button>
+              </span>
             {/if}
             {#if pendingTodosCount > 0 && settings.show_todo_in_pill}
-              <button
-                type="button"
+              <span
                 class="pill-badge pill-badge-todo"
-                onclick={handleOpenTodo}
                 title="{pendingTodosCount} pending tasks to do"
               >
                 📝 {pendingTodosCount}
-              </button>
+              </span>
             {/if}
             {#if islandState.isBatteryLow && telemetry?.battery && settings.show_battery_alert}
               <span class="pill-badge pill-badge-alert" title="Battery Low">
@@ -847,6 +861,29 @@
                         <span class="sidebar-badge todo-badge">{pendingTodosCount}</span>
                       {/if}
                     </button>
+
+                  {:else if modKey === 'focus' && settings.show_focus_in_pill !== false}
+                    <button
+                      type="button"
+                      class="nav-tab-btn"
+                      class:active={activePanelMode === 'focus'}
+                      onclick={handleOpenFocus}
+                    >
+                      <div class="tab-icon focus-tab-icon">🔥</div>
+                      <div class="tab-content">
+                        <span class="tab-title">Focus Mode</span>
+                        <span class="tab-sub">
+                          {#if islandState.isFocusActive}
+                            {islandState.focusRemainingFormatted} • {islandState.focusSession.label}
+                          {:else}
+                            Lock in & Pomodoro
+                          {/if}
+                        </span>
+                      </div>
+                      {#if islandState.isFocusActive}
+                        <span class="sidebar-badge focus-badge">{islandState.isFocusPaused ? 'PAUSED' : 'ACTIVE'}</span>
+                      {/if}
+                    </button>
                   {/if}
                 {/each}
 
@@ -941,6 +978,8 @@
                 <DropShelfPreview />
               {:else if activePanelMode === 'todo'}
                 <TodoPreview />
+              {:else if activePanelMode === 'focus'}
+                <FocusPreview />
               {/if}
             </main>
           </div>
@@ -1037,6 +1076,7 @@
     justify-content: space-between;
     box-sizing: border-box;
     opacity: 1;
+    cursor: pointer;
   }
 
   .compact-pill-wrapper.is-collapsing {
@@ -1205,18 +1245,11 @@
     border: 1px solid rgba(239, 68, 68, 0.5);
     color: #fca5a5;
     font-weight: 600;
-    cursor: pointer;
     box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
     margin-right: 4px;
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    transition: all 0.2s ease;
-  }
-
-  .pill-badge-mic-muted:hover {
-    background: rgba(239, 68, 68, 0.4);
-    transform: scale(1.04);
   }
 
   .mic-dot-pulse {
@@ -1233,14 +1266,7 @@
     border: 1px solid rgba(59, 130, 246, 0.4);
     color: #93c5fd;
     font-weight: 600;
-    cursor: pointer;
     margin-right: 4px;
-    transition: all 0.2s ease;
-  }
-
-  .pill-badge-shelf:hover {
-    background: rgba(59, 130, 246, 0.35);
-    transform: scale(1.04);
   }
 
   .pill-badge-todo {
@@ -1248,14 +1274,75 @@
     border: 1px solid rgba(16, 185, 129, 0.4);
     color: #6ee7b7;
     font-weight: 600;
-    cursor: pointer;
     margin-right: 4px;
-    transition: all 0.2s ease;
   }
 
-  .pill-badge-todo:hover {
-    background: rgba(16, 185, 129, 0.35);
-    transform: scale(1.04);
+  .pill-badge-media {
+    background: rgba(168, 85, 247, 0.2);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    color: #c084fc;
+    font-weight: 600;
+  }
+
+  .pill-badge-focus {
+    background: rgba(245, 158, 11, 0.2);
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    color: #fbbf24;
+    font-weight: 600;
+  }
+
+  .focus-flame-icon {
+    font-size: 13px;
+    line-height: 1;
+    display: inline-block;
+  }
+
+  .focus-flame-icon.pulsing {
+    animation: flameBounce 1.5s infinite;
+  }
+
+  .focus-time-digits {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #f59e0b;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    letter-spacing: -0.3px;
+  }
+
+  .focus-quote-text {
+    font-size: 10px;
+    color: #fbbf24;
+    max-width: 130px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-style: italic;
+  }
+
+  .focus-badge {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+  }
+
+  .focus-tab-icon {
+    font-size: 14px;
+  }
+
+  .island-surface.focus-active {
+    border-color: rgba(245, 158, 11, 0.55);
+    box-shadow: 0 0 16px rgba(245, 158, 11, 0.35), 0 8px 24px rgba(0, 0, 0, 0.7);
+    animation: flamePulse 2.5s ease-in-out infinite;
+  }
+
+  @keyframes flamePulse {
+    0%, 100% {
+      border-color: rgba(245, 158, 11, 0.45);
+      box-shadow: 0 0 14px rgba(245, 158, 11, 0.25), 0 8px 24px rgba(0, 0, 0, 0.7);
+    }
+    50% {
+      border-color: rgba(239, 68, 68, 0.7);
+      box-shadow: 0 0 22px rgba(245, 158, 11, 0.55), 0 0 8px rgba(239, 68, 68, 0.4), 0 8px 24px rgba(0, 0, 0, 0.7);
+    }
   }
 
   .pill-badge-sys {
