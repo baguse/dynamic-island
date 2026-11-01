@@ -255,7 +255,31 @@ pub fn set_autostart_configured(enabled: bool) -> Result<(), String> {
         }
 
         let exe_path = std::env::current_exe()
-            .map(|p| p.to_string_lossy().to_string())
+            .map(|p| {
+                let p_str = p.to_string_lossy().to_string();
+                // If running a debug binary, avoid registering target/debug/dynamic-island
+                // which attempts to connect to Vite (http://localhost:1420) on system startup.
+                if p_str.contains("target/debug") || p_str.contains("target\\debug") {
+                    if std::path::Path::new("/usr/bin/dynamic-island").exists() {
+                        "/usr/bin/dynamic-island".to_string()
+                    } else if std::path::Path::new("/usr/local/bin/dynamic-island").exists() {
+                        "/usr/local/bin/dynamic-island".to_string()
+                    } else {
+                        let release_candidate = p
+                            .parent()
+                            .and_then(|parent| parent.parent())
+                            .map(|target_dir| target_dir.join("release").join("dynamic-island"));
+                        if let Some(rel) = release_candidate {
+                            if rel.exists() {
+                                return rel.to_string_lossy().to_string();
+                            }
+                        }
+                        "dynamic-island".to_string()
+                    }
+                } else {
+                    p_str
+                }
+            })
             .unwrap_or_else(|_| "dynamic-island".to_string());
 
         let desktop_content = format!(
