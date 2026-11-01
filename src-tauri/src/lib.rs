@@ -266,6 +266,8 @@ fn resize_and_center_island(
         }
     }
 
+    let _ = (width, height);
+
     #[cfg(target_os = "linux")]
     {
         use cairo::{RectangleInt, Region};

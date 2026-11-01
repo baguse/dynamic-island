@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
+#[cfg(windows)]
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
@@ -371,6 +374,7 @@ pub fn resolve_workspace_dir(
     None
 }
 
+#[cfg(unix)]
 pub fn get_socket_path() -> PathBuf {
     if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
         let p = PathBuf::from(runtime_dir).join("dynamic-island.sock");
@@ -384,27 +388,47 @@ pub fn get_socket_path() -> PathBuf {
     PathBuf::from(format!("/tmp/dynamic-island-{}.sock", uid))
 }
 
+#[cfg(not(unix))]
+#[allow(dead_code)]
+pub fn get_socket_path() -> PathBuf {
+    std::env::temp_dir().join("dynamic-island.sock")
+}
+
 pub fn get_review_file_path() -> PathBuf {
-    if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
-        PathBuf::from(runtime_dir).join("dynamic-island-review.json")
-    } else {
-        unsafe extern "C" {
-            fn getuid() -> u32;
+    #[cfg(unix)]
+    {
+        if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+            PathBuf::from(runtime_dir).join("dynamic-island-review.json")
+        } else {
+            unsafe extern "C" {
+                fn getuid() -> u32;
+            }
+            let uid = unsafe { getuid() };
+            PathBuf::from(format!("/tmp/dynamic-island-review-{}.json", uid))
         }
-        let uid = unsafe { getuid() };
-        PathBuf::from(format!("/tmp/dynamic-island-review-{}.json", uid))
+    }
+    #[cfg(not(unix))]
+    {
+        std::env::temp_dir().join("dynamic-island-review.json")
     }
 }
 
 pub fn get_state_file_path() -> PathBuf {
-    if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
-        PathBuf::from(runtime_dir).join("dynamic-island-state.json")
-    } else {
-        unsafe extern "C" {
-            fn getuid() -> u32;
+    #[cfg(unix)]
+    {
+        if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+            PathBuf::from(runtime_dir).join("dynamic-island-state.json")
+        } else {
+            unsafe extern "C" {
+                fn getuid() -> u32;
+            }
+            let uid = unsafe { getuid() };
+            PathBuf::from(format!("/tmp/dynamic-island-state-{}.json", uid))
         }
-        let uid = unsafe { getuid() };
-        PathBuf::from(format!("/tmp/dynamic-island-state-{}.json", uid))
+    }
+    #[cfg(not(unix))]
+    {
+        std::env::temp_dir().join("dynamic-island-state.json")
     }
 }
 
@@ -429,51 +453,105 @@ pub fn write_review_to_disk(decision: bool) {
 }
 
 pub fn start_ipc_server(app_handle: AppHandle, dev_manager: Arc<DevManager>) {
-    let socket_path = get_socket_path();
+    #[cfg(unix)]
+    {
+        let socket_path = get_socket_path();
 
-    if socket_path.exists() {
-        let _ = fs::remove_file(&socket_path);
-    }
-
-    std::thread::spawn(move || {
-        let listener = match UnixListener::bind(&socket_path) {
-            Ok(l) => {
-                log::info!("Dynamic Island IPC listening on {:?}", socket_path);
-                l
-            }
-            Err(e) => {
-                log::warn!("Failed to bind Dynamic Island IPC socket {:?}: {}", socket_path, e);
-                return;
-            }
-        };
-
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => {
-                    let app_h = app_handle.clone();
-                    let dev_m = dev_manager.clone();
-                    std::thread::spawn(move || {
-                        handle_client(stream, &app_h, &dev_m);
-                    });
-                }
-                Err(e) => {
-                    log::debug!("IPC client connection error: {}", e);
-                }
-            }
+        if socket_path.exists() {
+            let _ = fs::remove_file(&socket_path);
         }
 
-        let _ = fs::remove_file(&socket_path);
-    });
+        std::thread::spawn(move || {
+            let listener = match UnixListener::bind(&socket_path) {
+                Ok(l) => {
+                    log::info!("Dynamic Island IPC listening on {:?}", socket_path);
+                    l
+                }
+                Err(e) => {
+                    log::warn!("Failed to bind Dynamic Island IPC socket {:?}: {}", socket_path, e);
+                    return;
+                }
+            };
+
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(stream) => {
+                        let app_h = app_handle.clone();
+                        let dev_m = dev_manager.clone();
+                        std::thread::spawn(move || {
+                            handle_client(stream, &app_h, &dev_m);
+                        });
+                    }
+                    Err(e) => {
+                        log::debug!("IPC client connection error: {}", e);
+                    }
+                }
+            }
+
+            let _ = fs::remove_file(&socket_path);
+        });
+    }
+
+    #[cfg(windows)]
+    {
+        std::thread::spawn(move || {
+            let listener = match TcpListener::bind("127.0.0.1:49215") {
+                Ok(l) => {
+                    log::info!("Dynamic Island IPC listening on 127.0.0.1:49215");
+                    l
+                }
+                Err(e) => {
+                    log::warn!("Failed to bind Dynamic Island IPC TCP socket: {}", e);
+                    return;
+                }
+            };
+
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(stream) => {
+                        let app_h = app_handle.clone();
+                        let dev_m = dev_manager.clone();
+                        std::thread::spawn(move || {
+                            handle_client(stream, &app_h, &dev_m);
+                        });
+                    }
+                    Err(e) => {
+                        log::debug!("IPC client connection error: {}", e);
+                    }
+                }
+            }
+        });
+    }
 }
 
-fn handle_client(mut stream: UnixStream, app_handle: &AppHandle, dev_manager: &DevManager) {
+#[cfg(unix)]
+fn handle_client(stream: UnixStream, app_handle: &AppHandle, dev_manager: &DevManager) {
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(310)));
     let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(10)));
     let reader = BufReader::new(match stream.try_clone() {
         Ok(s) => s,
         Err(_) => return,
     });
+    run_ipc_loop(reader, stream, app_handle, dev_manager);
+}
 
+#[cfg(windows)]
+fn handle_client(stream: TcpStream, app_handle: &AppHandle, dev_manager: &DevManager) {
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(310)));
+    let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(10)));
+    let reader = BufReader::new(match stream.try_clone() {
+        Ok(s) => s,
+        Err(_) => return,
+    });
+    run_ipc_loop(reader, stream, app_handle, dev_manager);
+}
+
+fn run_ipc_loop<R: BufRead, W: Write>(
+    reader: R,
+    mut writer: W,
+    app_handle: &AppHandle,
+    dev_manager: &DevManager,
+) {
     for line in reader.lines() {
         let line = match line {
             Ok(l) => l,
@@ -488,12 +566,12 @@ fn handle_client(mut stream: UnixStream, app_handle: &AppHandle, dev_manager: &D
         match serde_json::from_str::<IpcMessage>(trimmed) {
             Ok(msg) => {
                 let resp = process_ipc_message(msg, app_handle, dev_manager);
-                let _ = writeln!(stream, "{}", resp);
-                let _ = stream.flush();
+                let _ = writeln!(writer, "{}", resp);
+                let _ = writer.flush();
             }
             Err(e) => {
-                let _ = writeln!(stream, "{{\"ok\":false,\"error\":\"{}\"}}", e);
-                let _ = stream.flush();
+                let _ = writeln!(writer, "{{\"ok\":false,\"error\":\"{}\"}}", e);
+                let _ = writer.flush();
             }
         }
     }

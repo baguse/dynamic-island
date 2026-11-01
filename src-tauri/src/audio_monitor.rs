@@ -1,16 +1,25 @@
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "linux")]
 use std::io::Read;
+#[cfg(target_os = "linux")]
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
+#[cfg(target_os = "linux")]
+use tauri::Emitter;
 
+#[allow(dead_code)]
 pub const SAMPLE_RATE: u32 = 22050;
+#[allow(dead_code)]
 pub const CHUNK_SIZE: usize = 256;
+#[allow(dead_code)]
 const TARGET_FREQS: [f32; 5] = [65.0, 190.0, 650.0, 2400.0, 7200.0];
+#[allow(dead_code)]
 const FREQ_WEIGHTS: [f32; 5] = [1.2, 1.6, 2.4, 3.6, 5.2];
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AudioSpectrumData {
     pub bands: [f32; 5],
@@ -18,6 +27,7 @@ pub struct AudioSpectrumData {
 }
 
 /// Compute Goertzel magnitude for a specific frequency
+#[allow(dead_code)]
 pub fn goertzel_mag(samples: &[f32], freq: f32, sample_rate: f32) -> f32 {
     let n = samples.len() as f32;
     let k = (n * freq / sample_rate).round();
@@ -38,6 +48,7 @@ pub fn goertzel_mag(samples: &[f32], freq: f32, sample_rate: f32) -> f32 {
 }
 
 /// Process a chunk of PCM samples and return 5 normalized spectrum bands and energy
+#[allow(dead_code)]
 pub fn process_audio_chunk(
     samples: &[f32],
     peak: &mut f32,
@@ -94,6 +105,7 @@ pub fn process_audio_chunk(
 }
 
 /// Spawns the background PipeWire / PulseAudio monitor thread
+#[cfg(target_os = "linux")]
 pub fn start_audio_monitor(app_handle: AppHandle, is_running: Arc<AtomicBool>) {
     std::thread::spawn(move || {
         let sample_bytes = CHUNK_SIZE * 2; // 16-bit mono = 2 bytes per sample
@@ -158,6 +170,15 @@ pub fn start_audio_monitor(app_handle: AppHandle, is_running: Arc<AtomicBool>) {
 
             // If parec failed or terminated, pause before retrying
             std::thread::sleep(Duration::from_millis(1500));
+        }
+    });
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn start_audio_monitor(_app_handle: AppHandle, is_running: Arc<AtomicBool>) {
+    std::thread::spawn(move || {
+        while is_running.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(500));
         }
     });
 }

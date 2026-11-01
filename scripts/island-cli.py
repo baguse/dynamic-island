@@ -12,6 +12,7 @@ import time
 import shutil
 import socket
 import argparse
+import tempfile
 import subprocess
 
 AGENT_GUIDELINES_MD = """# Linux Dynamic Island Integration
@@ -82,10 +83,13 @@ ANTIGRAVITY_HOOKS_JSON = """{
 """
 
 def get_socket_path():
+    if sys.platform == "win32":
+        return os.path.join(tempfile.gettempdir(), "dynamic-island.sock")
     runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
     if runtime_dir:
         return os.path.join(runtime_dir, "dynamic-island.sock")
-    return f"/tmp/dynamic-island-{os.getuid()}.sock"
+    uid = os.getuid() if hasattr(os, "getuid") else "default"
+    return f"/tmp/dynamic-island-{uid}.sock"
 
 def is_agent_enabled():
     try:
@@ -100,6 +104,21 @@ def is_agent_enabled():
     return True
 
 def send_ipc(payload):
+    if sys.platform == "win32":
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+                client.settimeout(0.3)
+                client.connect(("127.0.0.1", 49215))
+                message = json.dumps(payload) + "\n"
+                client.sendall(message.encode("utf-8"))
+                resp = client.recv(1024).decode("utf-8").strip()
+                if resp:
+                    data = json.loads(resp)
+                    return data.get("ok", False)
+                return True
+        except Exception:
+            return False
+
     sock_path = get_socket_path()
     if not os.path.exists(sock_path):
         if os.path.exists("/tmp/dynamic-island.sock"):
@@ -122,6 +141,22 @@ def send_ipc(payload):
         return False
 
 def send_ipc_wait(payload, timeout=305):
+    if sys.platform == "win32":
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+                client.settimeout(float(timeout))
+                client.connect(("127.0.0.1", 49215))
+                message = json.dumps(payload) + "\n"
+                client.sendall(message.encode("utf-8"))
+                resp = client.recv(2048).decode("utf-8").strip()
+                if resp:
+                    return json.loads(resp)
+                return {"ok": False, "error": "empty_response"}
+        except socket.timeout:
+            return {"ok": False, "decision": "timeout", "error": "timed out waiting for user response"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     sock_path = get_socket_path()
     if not os.path.exists(sock_path):
         if os.path.exists("/tmp/dynamic-island.sock"):
@@ -146,8 +181,12 @@ def send_ipc_wait(payload, timeout=305):
         return {"ok": False, "error": str(e)}
 
 def get_full_dev_status():
-    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
-    state_file = os.path.join(runtime_dir, "dynamic-island-state.json") if runtime_dir else f"/tmp/dynamic-island-state-{os.getuid()}.json"
+    if sys.platform == "win32":
+        state_file = os.path.join(tempfile.gettempdir(), "dynamic-island-state.json")
+    else:
+        runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+        uid = os.getuid() if hasattr(os, "getuid") else "default"
+        state_file = os.path.join(runtime_dir, "dynamic-island-state.json") if runtime_dir else f"/tmp/dynamic-island-state-{uid}.json"
     if os.path.exists(state_file):
         try:
             with open(state_file, "r") as f:

@@ -1,7 +1,41 @@
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "linux")]
 use std::fs;
+#[cfg(target_os = "linux")]
 use std::path::Path;
 use std::time::Instant;
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct MemoryStatusEx {
+    length: u32,
+    memory_load: u32,
+    total_phys: u64,
+    avail_phys: u64,
+    total_page_file: u64,
+    avail_page_file: u64,
+    total_virtual: u64,
+    avail_virtual: u64,
+    avail_extended_virtual: u64,
+}
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct SystemPowerStatus {
+    ac_line_status: u8,
+    battery_flag: u8,
+    battery_life_percent: u8,
+    system_status_flag: u8,
+    battery_life_time: u32,
+    battery_full_life_time: u32,
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" {
+    fn GlobalMemoryStatusEx(stat: *mut MemoryStatusEx) -> i32;
+    fn GetSystemTimes(idle: *mut u64, kernel: *mut u64, user: *mut u64) -> i32;
+    fn GetSystemPowerStatus(status: *mut SystemPowerStatus) -> i32;
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatteryTelemetry {
@@ -103,6 +137,7 @@ impl SystemTracker {
         }
     }
 
+    #[cfg(target_os = "linux")]
     fn read_cpu_ticks() -> Result<(u64, u64), String> {
         let content = fs::read_to_string("/proc/stat").map_err(|e| e.to_string())?;
         for line in content.lines() {
@@ -124,6 +159,7 @@ impl SystemTracker {
         Err("Failed to parse /proc/stat".to_string())
     }
 
+    #[cfg(target_os = "linux")]
     fn read_memory() -> Result<(u64, u64, f32), String> {
         let content = fs::read_to_string("/proc/meminfo").map_err(|e| e.to_string())?;
         let mut total_kb = 0u64;
@@ -156,6 +192,7 @@ impl SystemTracker {
         Err("Failed to parse /proc/meminfo".to_string())
     }
 
+    #[cfg(target_os = "linux")]
     fn read_battery() -> Option<BatteryTelemetry> {
         let bat_dirs = ["/sys/class/power_supply/BAT0", "/sys/class/power_supply/BAT1"];
         for dir in bat_dirs {
@@ -188,6 +225,7 @@ impl SystemTracker {
         None
     }
 
+    #[cfg(target_os = "linux")]
     fn read_network_bytes() -> Result<(u64, u64), String> {
         let content = fs::read_to_string("/proc/net/dev").map_err(|e| e.to_string())?;
         let mut total_rx = 0u64;
@@ -209,6 +247,86 @@ impl SystemTracker {
         }
 
         Ok((total_rx, total_tx))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn read_cpu_ticks() -> Result<(u64, u64), String> {
+        #[cfg(target_os = "windows")]
+        {
+            let mut idle = 0u64;
+            let mut kernel = 0u64;
+            let mut user = 0u64;
+            unsafe {
+                if GetSystemTimes(&mut idle, &mut kernel, &mut user) != 0 {
+                    let total = kernel + user;
+                    return Ok((idle, total));
+                }
+            }
+        }
+        Ok((0, 0))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn read_memory() -> Result<(u64, u64, f32), String> {
+        #[cfg(target_os = "windows")]
+        {
+            let mut stat = MemoryStatusEx {
+                length: std::mem::size_of::<MemoryStatusEx>() as u32,
+                memory_load: 0,
+                total_phys: 0,
+                avail_phys: 0,
+                total_page_file: 0,
+                avail_page_file: 0,
+                total_virtual: 0,
+                avail_virtual: 0,
+                avail_extended_virtual: 0,
+            };
+            unsafe {
+                if GlobalMemoryStatusEx(&mut stat) != 0 {
+                    let total_mb = stat.total_phys / (1024 * 1024);
+                    let used_mb = stat.total_phys.saturating_sub(stat.avail_phys) / (1024 * 1024);
+                    let percent = stat.memory_load as f32;
+                    return Ok((used_mb, total_mb, percent));
+                }
+            }
+        }
+        Ok((0, 0, 0.0))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn read_battery() -> Option<BatteryTelemetry> {
+        #[cfg(target_os = "windows")]
+        {
+            let mut sps = SystemPowerStatus {
+                ac_line_status: 255,
+                battery_flag: 255,
+                battery_life_percent: 255,
+                system_status_flag: 0,
+                battery_life_time: 0,
+                battery_full_life_time: 0,
+            };
+            unsafe {
+                if GetSystemPowerStatus(&mut sps) != 0 && sps.battery_life_percent <= 100 {
+                    let is_charging = sps.ac_line_status == 1;
+                    let status = if is_charging {
+                        "Charging".to_string()
+                    } else {
+                        "Discharging".to_string()
+                    };
+                    return Some(BatteryTelemetry {
+                        percent: sps.battery_life_percent,
+                        status,
+                        is_charging,
+                    });
+                }
+            }
+        }
+        None
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn read_network_bytes() -> Result<(u64, u64), String> {
+        Ok((0, 0))
     }
 }
 

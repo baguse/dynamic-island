@@ -1,5 +1,7 @@
-use mpris::{PlaybackStatus, PlayerFinder};
 use serde::{Deserialize, Serialize};
+
+#[cfg(target_os = "linux")]
+use mpris::{PlaybackStatus, PlayerFinder};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MediaMetadata {
@@ -13,6 +15,7 @@ pub struct MediaMetadata {
     pub length_ms: Option<u64>,
 }
 
+#[cfg(target_os = "linux")]
 pub fn get_active_player_metadata() -> Option<MediaMetadata> {
     let finder = PlayerFinder::new().ok()?;
 
@@ -69,6 +72,12 @@ pub fn get_active_player_metadata() -> Option<MediaMetadata> {
     })
 }
 
+#[cfg(not(target_os = "linux"))]
+pub fn get_active_player_metadata() -> Option<MediaMetadata> {
+    None
+}
+
+#[cfg(target_os = "linux")]
 pub fn play_pause() -> Result<(), String> {
     let finder = PlayerFinder::new().map_err(|e| e.to_string())?;
     let player = finder
@@ -87,6 +96,12 @@ pub fn play_pause() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(target_os = "linux"))]
+pub fn play_pause() -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
 pub fn next() -> Result<(), String> {
     let finder = PlayerFinder::new().map_err(|e| e.to_string())?;
     let player = finder
@@ -105,6 +120,12 @@ pub fn next() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(target_os = "linux"))]
+pub fn next() -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
 pub fn previous() -> Result<(), String> {
     let finder = PlayerFinder::new().map_err(|e| e.to_string())?;
     let player = finder
@@ -120,5 +141,10 @@ pub fn previous() -> Result<(), String> {
         })?;
 
     player.previous().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn previous() -> Result<(), String> {
     Ok(())
 }

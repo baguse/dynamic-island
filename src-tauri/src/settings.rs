@@ -181,12 +181,19 @@ impl Default for IslandSettings {
 }
 
 pub fn get_config_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            return PathBuf::from(appdata).join("dynamic-island");
+        }
+    }
+
     if let Ok(config_home) = std::env::var("XDG_CONFIG_HOME") {
         PathBuf::from(config_home).join("dynamic-island")
     } else if let Ok(home) = std::env::var("HOME") {
         PathBuf::from(home).join(".config").join("dynamic-island")
     } else {
-        PathBuf::from("/tmp/dynamic-island")
+        std::env::temp_dir().join("dynamic-island")
     }
 }
 
@@ -194,6 +201,7 @@ fn get_settings_file_path() -> PathBuf {
     get_config_dir().join("settings.json")
 }
 
+#[cfg(not(target_os = "windows"))]
 fn get_autostart_desktop_file_path() -> Option<PathBuf> {
     let home = std::env::var("HOME").ok()?;
     Some(
@@ -235,12 +243,58 @@ pub fn save_settings_to_disk(settings: &IslandSettings) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+pub fn is_autostart_configured() -> bool {
+    std::process::Command::new("reg")
+        .args(["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "DynamicIsland"])
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+pub fn set_autostart_configured(enabled: bool) -> Result<(), String> {
+    if enabled {
+        let exe_path = std::env::current_exe()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "dynamic-island.exe".to_string());
+
+        let _ = std::process::Command::new("reg")
+            .args([
+                "add",
+                "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                "/v",
+                "DynamicIsland",
+                "/t",
+                "REG_SZ",
+                "/d",
+                &exe_path,
+                "/f",
+            ])
+            .output()
+            .map_err(|e| e.to_string())?;
+    } else {
+        let _ = std::process::Command::new("reg")
+            .args([
+                "delete",
+                "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                "/v",
+                "DynamicIsland",
+                "/f",
+            ])
+            .output();
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
 pub fn is_autostart_configured() -> bool {
     get_autostart_desktop_file_path()
         .map(|p| p.exists())
         .unwrap_or(false)
 }
 
+#[cfg(not(target_os = "windows"))]
 pub fn set_autostart_configured(enabled: bool) -> Result<(), String> {
     let path = match get_autostart_desktop_file_path() {
         Some(p) => p,
