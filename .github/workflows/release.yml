@@ -1,0 +1,127 @@
+name: Release Linux Dynamic Island
+
+on:
+  push:
+    branches:
+      - production
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+concurrency:
+  group: release-dynamic-island
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release Linux Packages (.deb, .rpm, .tar.gz)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Linux Build Dependencies & Packaging Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential curl wget file \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libcairo2-dev \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+            rpm patchelf
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Compute Release Tag & Version
+        id: versioning
+        run: |
+          VER=$(node -p "require('./package.json').version" 2>/dev/null || echo "0.1.0")
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${{ github.ref_name }}"
+          elif [[ "${{ github.ref_name }}" == "production" ]]; then
+            TAG="v${VER}-b${{ github.run_number }}"
+          else
+            TAG="v${VER}"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VER}" >> $GITHUB_OUTPUT
+          echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Build Tauri Desktop Packages (.deb and .rpm)
+        run: |
+          npx tauri build --bundles deb,rpm
+
+      - name: Build Standalone .tar.gz Archive
+        run: |
+          mkdir -p build-tar/bin
+          cp src-tauri/target/release/dynamic-island build-tar/bin/
+          if [ -f "scripts/island-cli.py" ]; then
+            cp scripts/island-cli.py build-tar/bin/island-cli
+            chmod +x build-tar/bin/island-cli
+          fi
+          if [ -f "scripts/antigravity-hook.py" ]; then
+            cp scripts/antigravity-hook.py build-tar/bin/
+          fi
+          chmod +x build-tar/bin/dynamic-island
+          tar -czf "dynamic-island_${{ steps.versioning.outputs.version }}_linux_x64.tar.gz" -C build-tar .
+
+      - name: Collect Release Artifacts
+        id: collect
+        run: |
+          mkdir -p release-artifacts
+          find src-tauri/target/release/bundle/deb -name "*.deb" -exec cp {} release-artifacts/ \; 2>/dev/null || true
+          find src-tauri/target/release/bundle/rpm -name "*.rpm" -exec cp {} release-artifacts/ \; 2>/dev/null || true
+          cp dynamic-island_*.tar.gz release-artifacts/ 2>/dev/null || true
+          echo "=== Release Artifacts ==="
+          ls -lh release-artifacts/
+
+      - name: Publish Release Packages to GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+          tag_name: ${{ steps.versioning.outputs.tag }}
+          name: 'Dynamic Island ${{ steps.versioning.outputs.tag }}'
+          body: |
+            ### 🏝️ Linux Dynamic Island Release ${{ steps.versioning.outputs.tag }}
+
+            Automated release build for Linux (x86_64 / amd64).
+
+            #### Available Packages:
+            - **Debian / Ubuntu**: `.deb` package
+              ```bash
+              sudo dpkg -i dynamic-island_*_amd64.deb
+              ```
+            - **Fedora / RHEL / openSUSE**: `.rpm` package
+              ```bash
+              sudo dnf install dynamic-island-*.x86_64.rpm
+              ```
+            - **Generic Linux**: Standalone `.tar.gz` bundle (with embedded `island-cli`)
+              ```bash
+              tar -xzf dynamic-island_*_linux_x64.tar.gz
+              ./bin/dynamic-island
+              ```
+
+            - **Commit**: `${{ github.sha }}`
+            - **Date**: ${{ steps.versioning.outputs.date }}
+          files: release-artifacts/*
+          make_latest: true

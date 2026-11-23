@@ -66,6 +66,17 @@
         "files": {
           "/usr/bin/island-cli": "../scripts/island-cli.py"
         }
+      },
+      "rpm": {
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3",
+          "libayatana-appindicator",
+          "python3"
+        ],
+        "files": {
+          "/usr/bin/island-cli": "../scripts/island-cli.py"
+        }
       }
     }
   }
