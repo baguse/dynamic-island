@@ -1528,8 +1528,10 @@
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 0;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 12px;
   }
 
   .toggle-info {

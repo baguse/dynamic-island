@@ -1117,7 +1117,7 @@
 
   .island-surface.notification {
     border-radius: 18px;
-    padding: 12px 14px;
+    padding: 12px 20px;
     box-shadow: var(--island-shadow, 0 8px 24px rgba(0, 0, 0, 0.7));
     justify-content: flex-start;
   }

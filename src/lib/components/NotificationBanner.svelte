@@ -98,8 +98,8 @@
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    padding: 2px 2px 8px 2px;
-    gap: 8px;
+    padding: 4px 6px 8px 6px;
+    gap: 12px;
   }
 
   .banner-content-btn {
