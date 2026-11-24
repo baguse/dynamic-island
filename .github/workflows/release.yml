@@ -85,6 +85,15 @@ jobs:
           chmod +x build-tar/bin/dynamic-island
           tar -czf "dynamic-island_${{ steps.versioning.outputs.version }}_linux_x64.tar.gz" -C build-tar .
 
+      - name: Build VS Code Extension Package (.vsix)
+        run: |
+          if [ -d "extensions/vscode" ]; then
+            cd extensions/vscode
+            npm ci
+            npx --yes @vscode/vsce package --no-git-tag-version --allow-missing-repository
+            cd ../..
+          fi
+
       - name: Collect Release Artifacts
         id: collect
         run: |
@@ -92,6 +101,7 @@ jobs:
           find src-tauri/target/release/bundle/deb -name "*.deb" -exec cp {} release-artifacts/ \; 2>/dev/null || true
           find src-tauri/target/release/bundle/rpm -name "*.rpm" -exec cp {} release-artifacts/ \; 2>/dev/null || true
           cp dynamic-island_*.tar.gz release-artifacts/ 2>/dev/null || true
+          find extensions/vscode -name "*.vsix" -exec cp {} release-artifacts/ \; 2>/dev/null || true
           echo "=== Release Artifacts ==="
           ls -lh release-artifacts/
 
@@ -104,7 +114,7 @@ jobs:
           body: |
             ### 🏝️ Linux Dynamic Island Release ${{ steps.versioning.outputs.tag }}
 
-            Automated release build for Linux (x86_64 / amd64).
+            Automated release build for Linux (x86_64 / amd64) and VS Code Extension.
 
             #### Available Packages:
             - **Debian / Ubuntu**: `.deb` package
@@ -120,6 +130,12 @@ jobs:
               tar -xzf dynamic-island_*_linux_x64.tar.gz
               ./bin/dynamic-island
               ```
+            - **VS Code Extension**: `.vsix` package
+              Install via VS Code / Cursor / Windsurf command line:
+              ```bash
+              code --install-extension dynamic-island-presence-*.vsix
+              ```
+              Or via Extensions menu → `Install from VSIX...`
 
             - **Commit**: `${{ github.sha }}`
             - **Date**: ${{ steps.versioning.outputs.date }}

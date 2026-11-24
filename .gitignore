@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# VSCode Extension build outputs
+extensions/vscode/out
+extensions/vscode/*.vsix
