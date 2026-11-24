@@ -20,6 +20,7 @@
     shelf: { label: 'Desktop Drop Shelf', icon: '📁', settingKey: 'show_shelf_in_pill' },
     todo: { label: 'To-Do List & Tasks', icon: '📝', settingKey: 'show_todo_in_pill' },
     focus: { label: 'Focus Mode & Pomodoro', icon: '🔥', settingKey: 'show_focus_in_pill' },
+    prayer: { label: 'Islamic Prayer Reminder', icon: '🕌', settingKey: 'show_prayer_in_pill' },
   };
 
   interface ThemeDef {
@@ -316,6 +317,8 @@
     { key: 'docker',    label: 'Docker Containers',       icon: '🐳' },
     { key: 'ports',     label: 'Ports Hub',               icon: '🌐' },
     { key: 'todo',      label: 'To-Do List',              icon: '📝' },
+    { key: 'focus',     label: 'Focus Mode',              icon: '🔥' },
+    { key: 'prayer',    label: 'Prayer Times',            icon: '🕌' },
     { key: 'settings',  label: 'Settings',                icon: '⚙️' },
   ];
 

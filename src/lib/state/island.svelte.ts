@@ -31,6 +31,9 @@ import {
   type WeatherData,
   type SkyTheme,
   type SkyIntensity,
+  type PrayerSchedule,
+  type PrayerTimeItem,
+  type NextPrayerInfo,
 } from '../types';
 
 export const FUNNY_FOCUS_QUOTES = [
@@ -89,6 +92,13 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   show_clipboard_in_pill: true,
   show_todo_in_pill: true,
   show_focus_in_pill: true,
+  show_prayer_in_pill: true,
+  prayer_city: null,
+  prayer_calculation_method: 'KEMENAG',
+  prayer_asr_school: 'standard',
+  prayer_notifications_enabled: true,
+  prayer_pre_reminder_mins: 10,
+  prayer_audio_mode: 'chime',
   module_order: [...DEFAULT_MODULE_ORDER],
   watched_repo_path: null,
   show_media_companion: true,
@@ -115,6 +125,7 @@ export const DEFAULT_SETTINGS: IslandSettings = {
     ports: 'Super+Shift+P',
     todo: 'Super+Shift+T',
     focus: 'Super+Shift+F',
+    prayer: 'Super+Shift+R',
     settings: 'Super+Shift+Comma',
   },
 };
@@ -139,6 +150,7 @@ export const BASE_DIMENSIONS: Record<IslandMode, IslandDimensions> = {
   shelf: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
   todo: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
   focus: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
+  prayer: { width: DASHBOARD_WIDTH, height: DASHBOARD_HEIGHT },
 };
 
 class IslandStore {
@@ -194,6 +206,29 @@ class IslandStore {
   shelf = $state<ShelfItem[]>([]);
   isDragOverShelf = $state<boolean>(false);
   todos = $state<TodoItem[]>([]);
+  prayerSchedule = $state<PrayerSchedule | null>(null);
+  isPrayerLoading = $state<boolean>(false);
+  lastNotifiedPrayerKey = $state<string | null>(null);
+
+  get nextPrayer(): NextPrayerInfo | null {
+    return this.prayerSchedule?.next_prayer ?? null;
+  }
+
+  get nextPrayerCountdownFormatted(): string {
+    return this.nextPrayer?.formatted_countdown ?? '--:--';
+  }
+
+  get nextPrayerSummary(): string {
+    if (!this.nextPrayer) return 'Daily Schedule';
+    return `${this.nextPrayer.label} at ${this.nextPrayer.time}`;
+  }
+
+  get isPrayerImminent(): boolean {
+    if (!this.nextPrayer) return false;
+    const preMins = this.settings.prayer_pre_reminder_mins ?? 10;
+    const preSecs = preMins * 60;
+    return this.nextPrayer.remaining_seconds > 0 && this.nextPrayer.remaining_seconds <= preSecs;
+  }
 
   get webPortsCount(): number {
     return this.ports.filter((p) => p.category === 'web').length;
@@ -264,6 +299,10 @@ class IslandStore {
   private unlistenAudio: UnlistenFn | null = null;
   private unlistenClipboard: UnlistenFn | null = null;
   private unlistenTodos: UnlistenFn | null = null;
+  private unlistenPrayer: UnlistenFn | null = null;
+  private unlistenPrayerAlert: UnlistenFn | null = null;
+  private prayerTickerTimer: ReturnType<typeof setInterval> | null = null;
+  private audioCtx: AudioContext | null = null;
   private unlistenSettings: UnlistenFn | null = null;
   private unlistenTrayReposition: UnlistenFn | null = null;
   private notificationTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -363,6 +402,7 @@ class IslandStore {
       if (key === 'media' && this.hasActiveMedia && this.settings.show_media_in_pill) return 'media';
       if (key === 'git' && this.hasActiveGit && this.settings.show_git_in_pill) return 'git';
       if (key === 'editor' && this.hasActiveEditor && this.settings.show_editor_in_pill) return 'editor';
+      if (key === 'prayer' && this.isPrayerImminent && this.settings.show_prayer_in_pill) return 'prayer';
     }
     return null;
   }
@@ -373,6 +413,7 @@ class IslandStore {
       if (active === 'focus') return 340;
       if (active === 'agent') return 340;
       if (active === 'editor') return 340;
+      if (active === 'prayer') return 330;
       if (active === 'build') return 330;
       if (active === 'media') return 330;
       if (active === 'git') return 330;
@@ -470,6 +511,8 @@ class IslandStore {
       targetMode = 'git';
     } else if (activePill === 'editor') {
       targetMode = 'editor';
+    } else if (activePill === 'prayer') {
+      targetMode = 'prayer';
     } else if (this.lastActiveDashboardModule && this.lastActiveDashboardModule !== 'build') {
       targetMode = this.lastActiveDashboardModule as IslandMode;
     } else {
@@ -657,6 +700,7 @@ class IslandStore {
       case 'shelf':     await this.setMode('shelf');     break;
       case 'todo':      await this.openTodo();          break;
       case 'focus':     await this.openFocus();         break;
+      case 'prayer':    await this.openPrayer();        break;
       default:          await this.setMode(panel);       break;
     }
   }
@@ -1699,6 +1743,239 @@ class IslandStore {
     }
   }
 
+  async openPrayer() {
+    await this.refreshPrayerSchedule();
+    await this.setMode('prayer');
+  }
+
+  async refreshPrayerSchedule(force = false): Promise<{ success: boolean; error?: string }> {
+    this.isPrayerLoading = true;
+    try {
+      const city = this.settings.prayer_city || this.settings.weather_city || null;
+      const method = this.settings.prayer_calculation_method || 'KEMENAG';
+      const asrSchool = this.settings.prayer_asr_school || 'standard';
+
+      const data = await invoke<PrayerSchedule>('get_prayer_schedule', {
+        city,
+        method,
+        asrSchool,
+        force,
+      });
+
+      if (data) {
+        this.prayerSchedule = data;
+        return { success: true };
+      }
+      return { success: false, error: 'No data returned' };
+    } catch (err: unknown) {
+      console.debug('refreshPrayerSchedule note:', err);
+      const msg = typeof err === 'string' ? err : ((err as Error)?.message || 'Failed to fetch prayer schedule');
+      return { success: false, error: msg };
+    } finally {
+      this.isPrayerLoading = false;
+    }
+  }
+
+  playPrayerSound(mode?: string) {
+    const selectedMode = mode || this.settings.prayer_audio_mode || 'chime';
+    if (selectedMode === 'none' || selectedMode === 'system') {
+      return;
+    }
+
+    try {
+      if (!this.audioCtx) {
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (AudioCtx) {
+          this.audioCtx = new AudioCtx();
+        }
+      }
+      if (!this.audioCtx) return;
+      if (this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume();
+      }
+
+      const now = this.audioCtx.currentTime;
+
+      if (selectedMode === 'beep') {
+        const playBeep = (time: number, freq: number) => {
+          if (!this.audioCtx) return;
+          const osc = this.audioCtx.createOscillator();
+          const gain = this.audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, time);
+          gain.gain.setValueAtTime(0, time);
+          gain.gain.linearRampToValueAtTime(0.2, time + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+          osc.connect(gain);
+          gain.connect(this.audioCtx.destination);
+          osc.start(time);
+          osc.stop(time + 0.19);
+        };
+        playBeep(now, 880);
+        playBeep(now + 0.22, 1174.66);
+      } else if (selectedMode === 'adhan_takbeer') {
+        const notes = [
+          { f: 349.23, dur: 0.6, delay: 0 },
+          { f: 440.0, dur: 0.7, delay: 0.65 },
+          { f: 523.25, dur: 0.9, delay: 1.4 },
+          { f: 440.0, dur: 1.1, delay: 2.35 },
+        ];
+        for (const n of notes) {
+          const osc = this.audioCtx.createOscillator();
+          const gain = this.audioCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(n.f, now + n.delay);
+          gain.gain.setValueAtTime(0, now + n.delay);
+          gain.gain.linearRampToValueAtTime(0.25, now + n.delay + 0.08);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + n.delay + n.dur);
+          osc.connect(gain);
+          gain.connect(this.audioCtx.destination);
+          osc.start(now + n.delay);
+          osc.stop(now + n.delay + n.dur + 0.05);
+        }
+      } else {
+        // 'chime': polyphonic bell chime
+        const freqs = [528, 660, 792, 1056];
+        freqs.forEach((freq, idx) => {
+          if (!this.audioCtx) return;
+          const osc = this.audioCtx.createOscillator();
+          const gain = this.audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.18);
+          gain.gain.setValueAtTime(0, now + idx * 0.18);
+          gain.gain.linearRampToValueAtTime(0.22, now + idx * 0.18 + 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.18 + 1.6);
+          osc.connect(gain);
+          gain.connect(this.audioCtx.destination);
+          osc.start(now + idx * 0.18);
+          osc.stop(now + idx * 0.18 + 1.7);
+        });
+      }
+    } catch (e) {
+      console.debug('playPrayerSound note:', e);
+    }
+  }
+
+  async testPrayerAlert(prayerName?: string) {
+    const name = prayerName || this.nextPrayer?.name || 'Maghrib';
+    try {
+      await invoke('test_prayer_notification', { prayerName: name });
+    } catch {
+      // Fallback local notification
+      this.showNotification({
+        id: `prayer-${Date.now()}`,
+        title: `🕌 Time for ${name}`,
+        message: `Hayya 'ala-s-Salah. It is now time for ${name} prayer.`,
+        app_name: 'Islamic Prayer Reminder',
+        icon: 'mosque',
+        duration_ms: 8000,
+      });
+    }
+    this.playPrayerSound();
+  }
+
+  tickPrayerCountdown() {
+    if (!this.prayerSchedule?.items) return;
+    const now = Date.now();
+    const obligatory = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+
+    let nextItem: PrayerTimeItem | null = null;
+    let currentItem: PrayerTimeItem | null = null;
+
+    for (const item of this.prayerSchedule.items) {
+      item.isPassed = item.timestamp <= now;
+      if (item.timestamp <= now && obligatory.includes(item.name)) {
+        currentItem = item;
+      }
+      if (item.timestamp > now && obligatory.includes(item.name) && !nextItem) {
+        nextItem = item;
+      }
+    }
+
+    for (const item of this.prayerSchedule.items) {
+      item.isNext = nextItem ? item.name === nextItem.name : false;
+      item.isCurrent = currentItem ? item.name === currentItem.name : false;
+    }
+
+    if (nextItem) {
+      const remainingSecs = Math.max(0, Math.floor((nextItem.timestamp - now) / 1000));
+      const hours = Math.floor(remainingSecs / 3600);
+      const mins = Math.floor((remainingSecs % 3600) / 60);
+      const secs = remainingSecs % 60;
+      const formatted = hours > 0
+        ? `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+        : `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+
+      this.prayerSchedule.next_prayer = {
+        name: nextItem.name,
+        arabic_name: nextItem.arabic_name || nextItem.arabicName || '',
+        label: nextItem.label,
+        time: nextItem.time,
+        remaining_seconds: remainingSecs,
+        formatted_countdown: formatted,
+        hours,
+        minutes: mins,
+        seconds: secs,
+      };
+
+      // Check pre-reminder alert (within 2s window)
+      const preMins = this.settings.prayer_pre_reminder_mins ?? 10;
+      const preSecs = preMins * 60;
+      const notifKey = `${nextItem.name}-${this.prayerSchedule.date_gregorian}`;
+
+      if (preMins > 0 && remainingSecs <= preSecs && remainingSecs >= preSecs - 2 && this.lastNotifiedPrayerKey !== `pre-${notifKey}`) {
+        this.lastNotifiedPrayerKey = `pre-${notifKey}`;
+        if (this.settings.prayer_notifications_enabled) {
+          invoke('trigger_notification', {
+            title: `⏳ Upcoming: ${nextItem.label}`,
+            message: `${nextItem.name} prayer will begin in ${preMins} minutes (${nextItem.time}).`,
+            appName: 'Islamic Prayer Reminder',
+            icon: 'mosque',
+            durationMs: 7000,
+          }).catch(() => {});
+          this.playPrayerSound();
+        }
+      }
+    } else {
+      const fajrTime = this.prayerSchedule.times['Fajr'] || '04:15';
+      this.prayerSchedule.next_prayer = {
+        name: 'Fajr',
+        arabic_name: 'الفجر',
+        label: 'Fajr (Subuh)',
+        time: fajrTime,
+        remaining_seconds: 0,
+        formatted_countdown: 'Tomorrow',
+        hours: 0,
+        minutes: 0,
+        seconds: 0,
+      };
+    }
+
+    if (currentItem) {
+      this.prayerSchedule.current_prayer = {
+        name: currentItem.name,
+        label: currentItem.label,
+        time: currentItem.time,
+      };
+
+      const diffSecs = Math.abs(Math.floor((now - currentItem.timestamp) / 1000));
+      const notifKey = `${currentItem.name}-${this.prayerSchedule.date_gregorian}`;
+      if (diffSecs <= 2 && this.lastNotifiedPrayerKey !== `exact-${notifKey}`) {
+        this.lastNotifiedPrayerKey = `exact-${notifKey}`;
+        if (this.settings.prayer_notifications_enabled) {
+          invoke('trigger_notification', {
+            title: `🕌 Time for ${currentItem.label}`,
+            message: `Hayya 'ala-s-Salah. It is now time for ${currentItem.name} prayer (${currentItem.time}).`,
+            appName: 'Islamic Prayer Reminder',
+            icon: 'mosque',
+            durationMs: 9000,
+          }).catch(() => {});
+          this.playPrayerSound();
+        }
+      }
+    }
+  }
+
   async initServices() {
     // 0. Load persistent settings from disk
     try {
@@ -2007,6 +2284,24 @@ class IslandStore {
     this.refreshShelf();
     this.refreshTodos();
 
+    // 11b. Prayer schedule listener & ticker
+    try {
+      this.unlistenPrayer = await listen<PrayerSchedule>('prayer-update', (event) => {
+        if (event.payload) {
+          this.prayerSchedule = event.payload;
+        }
+      });
+      this.unlistenPrayerAlert = await listen<string>('prayer-alert', (event) => {
+        this.playPrayerSound();
+      });
+      this.refreshPrayerSchedule();
+      this.prayerTickerTimer = setInterval(() => {
+        this.tickPrayerCountdown();
+      }, 1000);
+    } catch (err) {
+      console.debug('Failed to register prayer listener:', err);
+    }
+
     // 12. Settings updated / Reposition events from IPC or Tray
     try {
       this.unlistenSettings = await listen<IslandSettings>('settings-updated', (event) => {
@@ -2031,6 +2326,24 @@ class IslandStore {
     if (this.unlistenSettings) {
       this.unlistenSettings();
       this.unlistenSettings = null;
+    }
+    if (this.unlistenPrayer) {
+      this.unlistenPrayer();
+      this.unlistenPrayer = null;
+    }
+    if (this.unlistenPrayerAlert) {
+      this.unlistenPrayerAlert();
+      this.unlistenPrayerAlert = null;
+    }
+    if (this.prayerTickerTimer) {
+      clearInterval(this.prayerTickerTimer);
+      this.prayerTickerTimer = null;
+    }
+    if (this.audioCtx) {
+      try {
+        this.audioCtx.close();
+      } catch {}
+      this.audioCtx = null;
     }
     if (this.unlistenTrayReposition) {
       this.unlistenTrayReposition();

@@ -574,12 +574,144 @@ def cmd_focus(args):
         return 1
     print(f"✓ Dynamic Island: Focus mode {action} executed")
     return 0
-    stopped = [c for c in containers if not c.get("is_running")]
-    print(f"Docker Containers ({len(running)} running, {len(stopped)} stopped):")
-    for c in containers:
-        dot = "🟢" if c.get("is_running") else "⚪"
-        ports = f"({c.get('ports')})" if c.get('ports') else ""
-        print(f"  {dot} {c.get('name'):<22} {c.get('image'):<20} {c.get('status')} {ports}")
+
+def cmd_prayer(args):
+    action = getattr(args, "prayer_action", None) or "status"
+    payload = {"target": "prayer", "action": action}
+
+    if action == "set_city":
+        city_val = getattr(args, "city", None)
+        if not city_val:
+            print("Error: City name is required. Usage: island-cli prayer city <city_name>")
+            return 1
+        payload["city"] = city_val
+    elif action == "test":
+        prayer_name = getattr(args, "name", None)
+        if prayer_name:
+            payload["prayer_name"] = prayer_name
+
+    resp = send_ipc_wait(payload, timeout=5)
+
+    # Fallback to direct calculation or notification if daemon hasn't reloaded yet
+    if not isinstance(resp, dict) or not resp.get("ok"):
+        if action == "test":
+            prayer_name = getattr(args, "name", None) or "Maghrib"
+            send_ipc({
+                "target": "notification",
+                "title": f"🕌 Time for {prayer_name}",
+                "message": f"Hayya 'ala-s-Salah. It is now time for {prayer_name} prayer.",
+                "app_name": "Islamic Prayer Reminder",
+                "icon": "terminal",
+                "duration_ms": 8000,
+            })
+            print(f"✓ Triggered prayer alert for {prayer_name} on Dynamic Island.")
+            return 0
+        elif action in ("status", "next"):
+            import urllib.request
+            import urllib.parse
+            import json as pyjson
+            import datetime
+
+            city = "Surabaya"
+            cfg_path = os.path.expanduser("~/.config/dynamic-island/settings.json")
+            if os.path.exists(cfg_path):
+                try:
+                    with open(cfg_path, "r", encoding="utf-8") as f:
+                        cfg = pyjson.load(f)
+                        city = cfg.get("prayer_city") or cfg.get("weather_city") or "Surabaya"
+                except Exception:
+                    pass
+
+            try:
+                url = f"https://api.aladhan.com/v1/timingsByCity?city={urllib.parse.quote(city)}&country=Indonesia&method=11"
+                req = urllib.request.Request(url, headers={"User-Agent": "DynamicIsland/1.0"})
+                with urllib.request.urlopen(req, timeout=4) as response:
+                    raw = pyjson.loads(response.read().decode())
+                    data = raw.get("data", {})
+                    timings = data.get("timings", {})
+                    hijri = data.get("date", {}).get("hijri", {})
+                    hijri_str = f"{hijri.get('day')} {hijri.get('month', {}).get('en')} {hijri.get('year')} AH"
+
+                    now = datetime.datetime.now()
+                    now_min = now.hour * 60 + now.minute
+
+                    prayers = [
+                        ("Fajr", "Fajr (Subuh)", timings.get("Fajr", "04:15")),
+                        ("Sunrise", "Sunrise (Syuruq)", timings.get("Sunrise", "05:30")),
+                        ("Dhuhr", "Dhuhr (Dzuhur)", timings.get("Dhuhr", "11:45")),
+                        ("Asr", "Asr (Ashar)", timings.get("Asr", "15:05")),
+                        ("Maghrib", "Maghrib", timings.get("Maghrib", "17:50")),
+                        ("Isha", "Isha (Isya)", timings.get("Isha", "19:05")),
+                    ]
+
+                    next_p = None
+                    for name, label, t_str in prayers:
+                        clean_t = t_str.split()[0]
+                        hp, mp = map(int, clean_t.split(":"))
+                        p_min = hp * 60 + mp
+                        if p_min > now_min and not next_p and name in ("Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"):
+                            diff = p_min - now_min
+                            dh = diff // 60
+                            dm = diff % 60
+                            cd = f"{dh}h {dm}m" if dh > 0 else f"{dm}m"
+                            next_p = (name, label, clean_t, cd)
+
+                    if not next_p:
+                        next_p = ("Fajr", "Fajr (Subuh)", timings.get("Fajr", "04:15").split()[0], "Tomorrow")
+
+                    if action == "next":
+                        print(f"🕌 Next: {next_p[0]} at {next_p[2]} ({next_p[3]} remaining) in {city}")
+                        return 0
+
+                    print(f"🕌 Islamic Prayer Times — {city}")
+                    print(f"   📅 {hijri_str} • {now.strftime('%Y-%m-%d')}")
+                    print(f"   ★ Next Prayer: {next_p[0]} at {next_p[2]} ({next_p[3]} remaining)")
+                    print("\n   Daily Schedule:")
+                    for name, label, t_str in prayers:
+                        clean_t = t_str.split()[0]
+                        marker = "★ NEXT" if name == next_p[0] else " "
+                        print(f"     [{marker:<6}] {label:<18}: {clean_t}")
+                    return 0
+            except Exception as e:
+                print(f"Note: Prayer calculation fallback note: {e}")
+
+        print(f"Error: {resp.get('error', 'Operation failed') if isinstance(resp, dict) else 'Dynamic Island IPC unavailable'}")
+        return 1
+
+    if action == "next":
+        name = resp.get("name", "Prayer")
+        time_str = resp.get("time", "--:--")
+        countdown = resp.get("formatted_countdown", "")
+        city = resp.get("city", "")
+        print(f"🕌 Next: {name} at {time_str} ({countdown} remaining) in {city}")
+    elif action == "test":
+        print(f"✓ {resp.get('message', 'Triggered prayer alert')}")
+    elif action == "set_city":
+        print(f"✓ Prayer city updated to: {resp.get('city')}")
+    else:
+        # status
+        sched = resp.get("schedule", {})
+        city = sched.get("city", "Local")
+        country = sched.get("country", "")
+        hijri = sched.get("date_hijri", "")
+        gregorian = sched.get("date_gregorian", "")
+        qibla = sched.get("qibla_bearing", 0.0)
+        method = sched.get("method_name", "")
+        next_p = sched.get("next_prayer", {})
+
+        print(f"🕌 Islamic Prayer Times — {city}, {country}")
+        print(f"   📅 {hijri} • {gregorian}")
+        print(f"   🕋 Qibla: {qibla}° from North • Method: {method}")
+        if next_p:
+            print(f"   ★ Next Prayer: {next_p.get('name')} at {next_p.get('time')} ({next_p.get('formatted_countdown')} remaining)")
+        print("\n   Daily Schedule:")
+        for item in sched.get("items", []):
+            marker = "★ NEXT" if item.get("is_next") else ("▶ CURR" if item.get("is_current") else ("✓" if item.get("is_passed") else " "))
+            label = item.get("label", item.get("name", ""))
+            ar = item.get("arabic_name", "")
+            t = item.get("time", "")
+            print(f"     [{marker:<6}] {label:<18} ({ar:<12}): {t}")
+
     return 0
 
 def cmd_build(args):
@@ -1423,6 +1555,19 @@ def main():
     p_focus_resume = focus_subs.add_parser("resume", help="Resume focus timer")
     p_focus_open = focus_subs.add_parser("open", help="Open Focus Mode dashboard")
 
+    # Prayer sub-command
+    p_prayer = subparsers.add_parser("prayer", help="Islamic Prayer Times & Adhan Reminder")
+    prayer_subs = p_prayer.add_subparsers(dest="prayer_action")
+
+    prayer_subs.add_parser("status", help="Show full prayer schedule for today")
+    prayer_subs.add_parser("next", help="Display next upcoming prayer and countdown")
+
+    p_prayer_city = prayer_subs.add_parser("city", help="Set prayer calculation city")
+    p_prayer_city.add_argument("city", help="City name (e.g. 'Surabaya', 'Jakarta', 'London')")
+
+    p_prayer_test = prayer_subs.add_parser("test", help="Test trigger a prayer notification")
+    p_prayer_test.add_argument("name", nargs="?", default="Maghrib", help="Prayer name to test (default: Maghrib)")
+
     args = parser.parse_args()
 
     if args.subcommand == "toggle":
@@ -1455,6 +1600,8 @@ def main():
         sys.exit(cmd_todo(args))
     elif args.subcommand == "focus":
         sys.exit(cmd_focus(args))
+    elif args.subcommand == "prayer":
+        sys.exit(cmd_prayer(args))
     elif args.subcommand == "build":
         sys.exit(cmd_build(args))
     elif args.subcommand == "notify":

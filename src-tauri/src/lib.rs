@@ -11,6 +11,7 @@ mod system;
 mod tray;
 mod weather;
 mod todo;
+mod prayer;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -1010,6 +1011,48 @@ fn sync_todos_from_markdown(
     Ok(items)
 }
 
+#[tauri::command]
+fn get_prayer_schedule(
+    city: Option<String>,
+    method: Option<String>,
+    asr_school: Option<String>,
+    force: Option<bool>,
+) -> Result<prayer::PrayerSchedule, String> {
+    let st = settings::load_settings_from_disk();
+    let effective_city = city.or(st.prayer_city).or(st.weather_city);
+    let effective_method = method.unwrap_or(st.prayer_calculation_method);
+    let effective_asr = asr_school.unwrap_or(st.prayer_asr_school);
+    prayer::get_prayer_schedule(
+        effective_city,
+        Some(effective_method),
+        Some(effective_asr),
+        force.unwrap_or(false),
+    )
+}
+
+#[tauri::command]
+fn test_prayer_notification(app: tauri::AppHandle, prayer_name: Option<String>) -> Result<(), String> {
+    let name = prayer_name.unwrap_or_else(|| "Maghrib".to_string());
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+
+    let notif = IslandNotification {
+        id: format!("prayer-{}", timestamp),
+        title: format!("🕌 Time for {}", name),
+        message: format!("Hayya 'ala-s-Salah. It is now time for {} prayer.", name),
+        app_name: Some("Islamic Prayer Reminder".to_string()),
+        icon: Some("mosque".to_string()),
+        duration_ms: Some(8000),
+    };
+
+    let _ = app.emit("island-notification", &notif);
+    let _ = app.emit("prayer-alert", &name);
+
+    Ok(())
+}
+
 /// Register (or re-register) all global keyboard shortcuts from settings.
 /// Existing shortcuts are unregistered first to handle remaps cleanly.
 fn apply_global_shortcuts(app: &tauri::AppHandle) {
@@ -1298,6 +1341,22 @@ pub fn run() {
                             let _ = handle.emit("weather-update", &w);
                         }
                     }
+
+                    // 6. Prayer check (initial on counter=1, then every ~60s = 75 iterations)
+                    if counter == 1 || counter % 75 == 0 {
+                        let st = settings::load_settings_from_disk();
+                        if st.show_prayer_in_pill {
+                            let city = st.prayer_city.or(st.weather_city);
+                            if let Ok(p) = prayer::get_prayer_schedule(
+                                city,
+                                Some(st.prayer_calculation_method),
+                                Some(st.prayer_asr_school),
+                                false,
+                            ) {
+                                let _ = handle.emit("prayer-update", &p);
+                            }
+                        }
+                    }
                 }
             });
 
@@ -1364,6 +1423,8 @@ pub fn run() {
             clear_completed_todos,
             export_todos_to_markdown,
             sync_todos_from_markdown,
+            get_prayer_schedule,
+            test_prayer_notification,
         ])
         .run(tauri::generate_context!())
         .expect("error while running dynamic-island application");

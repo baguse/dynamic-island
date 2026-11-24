@@ -1,4 +1,4 @@
-export type IslandMode = 'idle' | 'expanded' | 'agent' | 'media' | 'notification' | 'system' | 'settings' | 'git' | 'editor' | 'ports' | 'docker' | 'hardware' | 'clipboard' | 'shelf' | 'todo' | 'focus';
+export type IslandMode = 'idle' | 'expanded' | 'agent' | 'media' | 'notification' | 'system' | 'settings' | 'git' | 'editor' | 'ports' | 'docker' | 'hardware' | 'clipboard' | 'shelf' | 'todo' | 'focus' | 'prayer';
 
 export interface IslandDimensions {
   width: number;
@@ -175,6 +175,7 @@ export const DEFAULT_MODULE_ORDER = [
   'shelf',
   'todo',
   'focus',
+  'prayer',
 ] as const;
 
 export type ModuleKey = (typeof DEFAULT_MODULE_ORDER)[number];
@@ -214,6 +215,13 @@ export interface IslandSettings {
   show_clipboard_in_pill: boolean;
   show_todo_in_pill: boolean;
   show_focus_in_pill: boolean;
+  show_prayer_in_pill: boolean;
+  prayer_city?: string | null;
+  prayer_calculation_method?: string;
+  prayer_asr_school?: 'standard' | 'hanafi';
+  prayer_notifications_enabled?: boolean;
+  prayer_pre_reminder_mins?: number;
+  prayer_audio_mode?: 'chime' | 'beep' | 'adhan_takbeer' | 'system' | 'none';
   module_order: string[];
   watched_repo_path?: string | null;
   show_media_companion: boolean;
@@ -314,4 +322,53 @@ export interface TodoItem {
   due_date?: string | null;
   created_at: number;
   completed_at?: number | null;
+}
+
+export interface PrayerTimeItem {
+  name: string;        // 'Imsak' | 'Fajr' | 'Sunrise' | 'Dhuhr' | 'Asr' | 'Maghrib' | 'Isha'
+  arabic_name?: string; // 'الإمساك' | 'الفجر' | 'الشروق' | 'الظهر' | 'العصر' | 'المغرب' | 'العشاء'
+  arabicName?: string;
+  label: string;       // e.g. 'Fajr (Subuh)'
+  time: string;        // '04:18'
+  timestamp: number;   // UNIX epoch ms
+  isNext?: boolean;
+  isCurrent?: boolean;
+  isPassed?: boolean;
+  is_next?: boolean;
+  is_current?: boolean;
+  is_passed?: boolean;
+}
+
+export interface NextPrayerInfo {
+  name: string;
+  arabic_name?: string;
+  label: string;
+  time: string;
+  remaining_seconds: number;
+  formatted_countdown: string;
+  hours?: number;
+  minutes?: number;
+  seconds?: number;
+}
+
+export interface PrayerSchedule {
+  city: string;
+  country: string;
+  date_gregorian: string;
+  date_hijri: string;
+  hijri_day: string;
+  hijri_month: string;
+  hijri_year: string;
+  method_name: string;
+  asr_school: string;
+  times: Record<string, string>;
+  items: PrayerTimeItem[];
+  next_prayer: NextPrayerInfo | null;
+  current_prayer: {
+    name: string;
+    label: string;
+    time: string;
+  } | null;
+  qibla_bearing: number;
+  updated_at: number;
 }

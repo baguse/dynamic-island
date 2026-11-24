@@ -26,7 +26,24 @@ fn default_module_order() -> Vec<String> {
         "shelf".to_string(),
         "todo".to_string(),
         "focus".to_string(),
+        "prayer".to_string(),
     ]
+}
+
+fn default_prayer_method() -> String {
+    "KEMENAG".to_string()
+}
+
+fn default_prayer_asr() -> String {
+    "standard".to_string()
+}
+
+fn default_prayer_pre_mins() -> u32 {
+    10
+}
+
+fn default_prayer_audio() -> String {
+    "chime".to_string()
 }
 
 fn default_horizontal_position() -> String {
@@ -65,6 +82,7 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     map.insert("docker".to_string(), "Super+Shift+D".to_string());
     map.insert("ports".to_string(), "Super+Shift+P".to_string());
     map.insert("todo".to_string(), "Super+Shift+T".to_string());
+    map.insert("prayer".to_string(), "Super+Shift+R".to_string());
     map.insert("settings".to_string(), "Super+Shift+Comma".to_string());
     map
 }
@@ -105,6 +123,20 @@ pub struct IslandSettings {
     pub show_todo_in_pill: bool,
     #[serde(default = "default_true")]
     pub show_focus_in_pill: bool,
+    #[serde(default = "default_true")]
+    pub show_prayer_in_pill: bool,
+    #[serde(default)]
+    pub prayer_city: Option<String>,
+    #[serde(default = "default_prayer_method")]
+    pub prayer_calculation_method: String,
+    #[serde(default = "default_prayer_asr")]
+    pub prayer_asr_school: String,
+    #[serde(default = "default_true")]
+    pub prayer_notifications_enabled: bool,
+    #[serde(default = "default_prayer_pre_mins")]
+    pub prayer_pre_reminder_mins: u32,
+    #[serde(default = "default_prayer_audio")]
+    pub prayer_audio_mode: String,
     #[serde(default = "default_module_order")]
     pub module_order: Vec<String>,
     #[serde(default)]
@@ -161,6 +193,13 @@ impl Default for IslandSettings {
             show_clipboard_in_pill: true,
             show_todo_in_pill: true,
             show_focus_in_pill: true,
+            show_prayer_in_pill: true,
+            prayer_city: None,
+            prayer_calculation_method: default_prayer_method(),
+            prayer_asr_school: default_prayer_asr(),
+            prayer_notifications_enabled: true,
+            prayer_pre_reminder_mins: default_prayer_pre_mins(),
+            prayer_audio_mode: default_prayer_audio(),
             module_order: default_module_order(),
             watched_repo_path: None,
             show_media_companion: true,
@@ -375,8 +414,10 @@ mod tests {
         assert!(s.show_docker_in_pill);
         assert!(s.show_todo_in_pill);
         assert!(s.show_focus_in_pill);
-        assert_eq!(s.module_order.len(), 13);
+        assert!(s.show_prayer_in_pill);
+        assert_eq!(s.module_order.len(), 14);
         assert_eq!(s.module_order[0], "media");
+        assert!(s.module_order.contains(&"prayer".to_string()));
         assert!(s.show_media_companion);
         assert_eq!(s.media_companion_style, "vinyl");
         assert_eq!(s.equalizer_style, "bars");
@@ -392,8 +433,9 @@ mod tests {
     fn test_module_order_backwards_compatibility() {
         let json = r#"{"theme":"neon","hover_expand_enabled":true,"hover_delay_ms":200,"leave_delay_ms":400,"inactivity_timeout_s":10,"top_margin":10.0,"show_system_in_pill":true,"show_battery_alert":true,"show_media_in_pill":true,"show_build_in_pill":true,"show_agent_in_pill":true,"autostart_enabled":false}"#;
         let s: IslandSettings = serde_json::from_str(json).unwrap();
-        assert_eq!(s.module_order.len(), 13);
+        assert_eq!(s.module_order.len(), 14);
         assert_eq!(s.module_order[0], "media");
+        assert!(s.module_order.contains(&"prayer".to_string()));
         assert!(s.show_media_companion);
         assert_eq!(s.media_companion_style, "vinyl");
         assert_eq!(s.equalizer_style, "bars");

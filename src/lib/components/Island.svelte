@@ -19,6 +19,7 @@
   import DropShelfPreview from './DropShelfPreview.svelte';
   import TodoPreview from './TodoPreview.svelte';
   import FocusPreview from './FocusPreview.svelte';
+  import PrayerPreview from './PrayerPreview.svelte';
   import AudioEqualizer from './AudioEqualizer.svelte';
   import AmbientSkyCanvas from './AmbientSkyCanvas.svelte';
   import PixelMascot from './PixelMascot.svelte';
@@ -268,6 +269,11 @@
     islandState.openFocus();
   }
 
+  function handleOpenPrayer(e?: MouseEvent) {
+    if (e) e.stopPropagation();
+    islandState.openPrayer();
+  }
+
   function handleToggleMic(e: MouseEvent) {
     e.stopPropagation();
     islandState.toggleMicMute();
@@ -376,6 +382,23 @@
           <div class="pill-right">
             <span class="pill-badge pill-badge-focus">
               {islandState.isFocusPaused ? '⏸ Paused' : '🔥 Focus'}
+            </span>
+          </div>
+        </div>
+      {:else if islandState.activePillModule === 'prayer' && islandState.nextPrayer}
+        <!-- Compact Pill with Imminent Prayer Alert -->
+        <div class="pill-content prayer-pill">
+          <div class="pill-left">
+            <PixelMascot size="sm" />
+            <span class="prayer-pill-glow-icon" aria-hidden="true">🕌</span>
+            <div class="pill-media-text">
+              <span class="pill-track-title">{islandState.nextPrayer.label}</span>
+              <span class="pill-track-artist">{islandState.nextPrayerCountdownFormatted} until adhan</span>
+            </div>
+          </div>
+          <div class="pill-right">
+            <span class="pill-badge pill-badge-prayer-imminent">
+              {islandState.nextPrayer.time}
             </span>
           </div>
         </div>
@@ -521,6 +544,15 @@
                 title="{pendingTodosCount} pending tasks to do"
               >
                 📝 {pendingTodosCount}
+              </span>
+            {/if}
+            {#if islandState.nextPrayer && settings.show_prayer_in_pill}
+              <span
+                class="pill-badge pill-badge-prayer-idle"
+                class:imminent={islandState.isPrayerImminent}
+                title="Next: {islandState.nextPrayer.label} at {islandState.nextPrayer.time} ({islandState.nextPrayerCountdownFormatted} remaining)"
+              >
+                🕌 {islandState.nextPrayer.name} {islandState.nextPrayer.time}
               </span>
             {/if}
             {#if islandState.isBatteryLow && telemetry?.battery && settings.show_battery_alert}
@@ -884,6 +916,29 @@
                         <span class="sidebar-badge focus-badge">{islandState.isFocusPaused ? 'PAUSED' : 'ACTIVE'}</span>
                       {/if}
                     </button>
+
+                  {:else if modKey === 'prayer' && settings.show_prayer_in_pill}
+                    <button
+                      type="button"
+                      class="nav-tab-btn"
+                      class:active={activePanelMode === 'prayer'}
+                      onclick={handleOpenPrayer}
+                    >
+                      <div class="tab-icon prayer-tab-icon">🕌</div>
+                      <div class="tab-content">
+                        <span class="tab-title">Prayer Times</span>
+                        <span class="tab-sub">
+                          {#if islandState.nextPrayer}
+                            {islandState.nextPrayer.name} {islandState.nextPrayer.time}
+                          {:else}
+                            Daily Schedule
+                          {/if}
+                        </span>
+                      </div>
+                      {#if islandState.isPrayerImminent}
+                        <span class="sidebar-badge prayer-imminent-badge">Soon</span>
+                      {/if}
+                    </button>
                   {/if}
                 {/each}
 
@@ -980,6 +1035,8 @@
                 <TodoPreview />
               {:else if activePanelMode === 'focus'}
                 <FocusPreview />
+              {:else if activePanelMode === 'prayer'}
+                <PrayerPreview />
               {/if}
             </main>
           </div>
@@ -1289,6 +1346,46 @@
     border: 1px solid rgba(245, 158, 11, 0.45);
     color: #fbbf24;
     font-weight: 600;
+  }
+
+  .pill-badge-prayer-idle {
+    background: rgba(20, 184, 166, 0.15);
+    border: 1px solid rgba(45, 212, 191, 0.35);
+    color: #5eead4;
+    font-weight: 600;
+    margin-right: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .pill-badge-prayer-idle.imminent {
+    background: rgba(245, 158, 11, 0.25);
+    border-color: rgba(245, 158, 11, 0.6);
+    color: #fcd34d;
+    animation: flameBounce 1.5s infinite;
+  }
+
+  .pill-badge-prayer-imminent {
+    background: rgba(20, 184, 166, 0.25);
+    border: 1px solid rgba(45, 212, 191, 0.5);
+    color: #5eead4;
+    font-weight: 700;
+  }
+
+  .prayer-pill-glow-icon {
+    font-size: 13px;
+    display: inline-block;
+    filter: drop-shadow(0 0 6px rgba(45, 212, 191, 0.6));
+  }
+
+  .prayer-imminent-badge {
+    background: #f59e0b;
+    color: #000;
+    font-weight: 800;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 4px;
   }
 
   .focus-flame-icon {

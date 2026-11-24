@@ -181,6 +181,15 @@ pub enum IpcMessage {
         due: Option<String>,
         path: Option<String>,
     },
+    #[serde(rename = "prayer")]
+    Prayer {
+        #[serde(default)]
+        action: Option<String>, // "status", "next", "test", "set_city"
+        #[serde(default)]
+        city: Option<String>,
+        #[serde(default)]
+        prayer_name: Option<String>,
+    },
 }
 
 pub struct DevManager {
@@ -1049,6 +1058,86 @@ pub fn process_ipc_message(
                 }
             } else {
                 serde_json::json!({ "ok": false, "error": "AppState not available" }).to_string()
+            }
+        }
+
+        IpcMessage::Prayer { action, city, prayer_name } => {
+            let act = action.unwrap_or_else(|| "status".to_string());
+            match act.as_str() {
+                "next" => {
+                    let st = crate::settings::load_settings_from_disk();
+                    let effective_city = city.or(st.prayer_city).or(st.weather_city);
+                    match crate::prayer::get_prayer_schedule(
+                        effective_city,
+                        Some(st.prayer_calculation_method),
+                        Some(st.prayer_asr_school),
+                        false,
+                    ) {
+                        Ok(sched) => {
+                            if let Some(next) = sched.next_prayer {
+                                serde_json::json!({
+                                    "ok": true,
+                                    "name": next.name,
+                                    "label": next.label,
+                                    "time": next.time,
+                                    "remaining_seconds": next.remaining_seconds,
+                                    "formatted_countdown": next.formatted_countdown,
+                                    "city": sched.city,
+                                }).to_string()
+                            } else {
+                                serde_json::json!({ "ok": false, "error": "No upcoming prayer found" }).to_string()
+                            }
+                        }
+                        Err(e) => serde_json::json!({ "ok": false, "error": e }).to_string(),
+                    }
+                }
+                "test" => {
+                    let name = prayer_name.unwrap_or_else(|| "Maghrib".to_string());
+                    let notif = crate::IslandNotification {
+                        id: format!("prayer-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()),
+                        title: format!("🕌 Time for {}", name),
+                        message: format!("Hayya 'ala-s-Salah. It is now time for {} prayer.", name),
+                        app_name: Some("Islamic Prayer Reminder".to_string()),
+                        icon: Some("mosque".to_string()),
+                        duration_ms: Some(8000),
+                    };
+                    let _ = app_handle.emit("island-notification", &notif);
+                    let _ = app_handle.emit("prayer-alert", &name);
+                    serde_json::json!({ "ok": true, "message": format!("Triggered alert for {}", name) }).to_string()
+                }
+                "set_city" => {
+                    if let Some(c) = city {
+                        let mut st = crate::settings::load_settings_from_disk();
+                        st.prayer_city = Some(c.clone());
+                        let _ = crate::settings::save_settings_to_disk(&st);
+                        let _ = app_handle.emit("settings-updated", &st);
+                        if let Ok(p) = crate::prayer::get_prayer_schedule(
+                            Some(c.clone()),
+                            Some(st.prayer_calculation_method),
+                            Some(st.prayer_asr_school),
+                            true,
+                        ) {
+                            let _ = app_handle.emit("prayer-update", &p);
+                        }
+                        serde_json::json!({ "ok": true, "city": c }).to_string()
+                    } else {
+                        serde_json::json!({ "ok": false, "error": "City parameter required" }).to_string()
+                    }
+                }
+                _ => {
+                    // "status" or default
+                    let st = crate::settings::load_settings_from_disk();
+                    let effective_city = city.or(st.prayer_city).or(st.weather_city);
+                    match crate::prayer::get_prayer_schedule(
+                        effective_city,
+                        Some(st.prayer_calculation_method),
+                        Some(st.prayer_asr_school),
+                        false,
+                    ) {
+                        Ok(sched) => serde_json::json!({ "ok": true, "schedule": sched }).to_string(),
+                        Err(e) => serde_json::json!({ "ok": false, "error": e }).to_string(),
+                    }
+                }
             }
         }
     }
