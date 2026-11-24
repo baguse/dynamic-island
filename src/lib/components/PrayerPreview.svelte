@@ -55,11 +55,9 @@
   async function handleSaveSettings() {
     isSavingSettings = true;
     try {
-      const updated = {
-        ...settings,
+      await islandState.updateSettings({
         prayer_city: customCityInput.trim() ? customCityInput.trim() : null,
-      };
-      await islandState.saveSettings(updated);
+      });
       await islandState.refreshPrayerSchedule(true);
       showSettingsModal = false;
     } catch (err) {
@@ -70,46 +68,36 @@
   }
 
   async function handleSelectMethod(methodId: string) {
-    const updated = {
-      ...settings,
+    await islandState.updateSettings({
       prayer_calculation_method: methodId,
-    };
-    await islandState.saveSettings(updated);
+    });
     await islandState.refreshPrayerSchedule(true);
   }
 
   async function handleSelectAsr(school: 'standard' | 'hanafi') {
-    const updated = {
-      ...settings,
+    await islandState.updateSettings({
       prayer_asr_school: school,
-    };
-    await islandState.saveSettings(updated);
+    });
     await islandState.refreshPrayerSchedule(true);
   }
 
   async function handleSelectAudio(mode: 'chime' | 'beep' | 'adhan_takbeer' | 'system' | 'none') {
-    const updated = {
-      ...settings,
+    await islandState.updateSettings({
       prayer_audio_mode: mode,
-    };
-    await islandState.saveSettings(updated);
+    });
     islandState.playPrayerSound(mode);
   }
 
   async function handleSelectPreReminder(mins: number) {
-    const updated = {
-      ...settings,
+    await islandState.updateSettings({
       prayer_pre_reminder_mins: mins,
-    };
-    await islandState.saveSettings(updated);
+    });
   }
 
   async function handleToggleNotifications() {
-    const updated = {
-      ...settings,
+    await islandState.updateSettings({
       prayer_notifications_enabled: !settings.prayer_notifications_enabled,
-    };
-    await islandState.saveSettings(updated);
+    });
   }
 
   function handleTestAudio() {
