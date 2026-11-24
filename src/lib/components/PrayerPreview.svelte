@@ -146,7 +146,31 @@
     const index = Math.round(bearing / 45) % 8;
     return directions[index];
   }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (showSettingsModal) {
+      if (e.key === 'Escape') {
+        showSettingsModal = false;
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (e.key === 'r' || e.key === 'R') {
+      if (!isLoading) {
+        handleRefresh();
+      }
+    } else if (e.key === 't' || e.key === 'T' || e.key === ' ') {
+      handleTestAudio();
+      e.preventDefault();
+    } else if (e.key === 's' || e.key === 'S' || e.key === ',') {
+      showSettingsModal = true;
+      e.preventDefault();
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="prayer-panel">
   <IslandHeader title="Islamic Prayer Reminder">
@@ -248,19 +272,21 @@
               class="hero-action-btn audio-btn"
               onclick={handleTestAudio}
               class:testing={audioTesting}
-              title="Test Prayer Notification & Audio Chime"
+              title="Test Prayer Notification & Audio Chime (Shortcut: T or Space)"
             >
               <span class="btn-icon">{audioTesting ? '🔔' : '🔊'}</span>
               <span>{audioTesting ? 'Playing...' : 'Test Adhan'}</span>
+              <kbd class="action-kbd">T</kbd>
             </button>
             <button
               type="button"
               class="hero-action-btn settings-btn"
               onclick={() => (showSettingsModal = !showSettingsModal)}
-              title="Configure Prayer Times & Alerts"
+              title="Configure Prayer Times & Alerts (Shortcut: S)"
             >
               <span class="btn-icon">⚙️</span>
               <span>Settings</span>
+              <kbd class="action-kbd">S</kbd>
             </button>
           </div>
         </div>
@@ -303,10 +329,11 @@
             class="refresh-icon-btn"
             onclick={handleRefresh}
             disabled={isLoading}
-            title="Refresh prayer times"
+            title="Refresh prayer times (Shortcut: R)"
           >
             <span class="refresh-icon" class:spinning={isLoading}>⟳</span>
             <span>Refresh</span>
+            <kbd class="action-kbd small">R</kbd>
           </button>
         </div>
       </div>
@@ -942,6 +969,25 @@
   .hero-action-btn.settings-btn:hover {
     background: rgba(255, 255, 255, 0.16);
     color: #ffffff;
+  }
+
+  .action-kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    font-size: 9px;
+    font-weight: 700;
+    font-family: inherit;
+    line-height: 1.2;
+    color: rgba(255, 255, 255, 0.6);
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    margin-left: 3px;
+  }
+
+  .action-kbd.small {
+    padding: 0 4px;
+    font-size: 8px;
   }
 
   /* Qibla Card */
