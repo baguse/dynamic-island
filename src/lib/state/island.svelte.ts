@@ -34,6 +34,7 @@ import {
   type PrayerSchedule,
   type PrayerTimeItem,
   type NextPrayerInfo,
+  type MeetingInfo,
 } from '../types';
 
 export const FUNNY_FOCUS_QUOTES = [
@@ -210,6 +211,25 @@ class IslandStore {
   isPrayerLoading = $state<boolean>(false);
   lastNotifiedPrayerKey = $state<string | null>(null);
 
+  // Active Meeting / Call detection
+  meeting = $state<MeetingInfo | null>(null);
+
+  get isMeetingActive(): boolean {
+    return this.meeting?.is_active ?? false;
+  }
+
+  get meetingFormattedDuration(): string {
+    if (!this.meeting || !this.meeting.elapsed_seconds) return '00:00';
+    const totalSecs = this.meeting.elapsed_seconds;
+    const hrs = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const secs = totalSecs % 60;
+    if (hrs > 0) {
+      return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+
   get nextPrayer(): NextPrayerInfo | null {
     return this.prayerSchedule?.next_prayer ?? null;
   }
@@ -301,6 +321,8 @@ class IslandStore {
   private unlistenTodos: UnlistenFn | null = null;
   private unlistenPrayer: UnlistenFn | null = null;
   private unlistenPrayerAlert: UnlistenFn | null = null;
+  private unlistenMeeting: UnlistenFn | null = null;
+  private meetingTickerTimer: ReturnType<typeof setInterval> | null = null;
   private prayerTickerTimer: ReturnType<typeof setInterval> | null = null;
   private audioCtx: AudioContext | null = null;
   private unlistenSettings: UnlistenFn | null = null;
@@ -395,6 +417,7 @@ class IslandStore {
   }
 
   get activePillModule(): ModuleKey | null {
+    if (this.isMeetingActive) return null; // Meeting capsule takes highest priority in pill
     if (this.isFocusActive && this.settings.show_focus_in_pill !== false) return 'focus';
     for (const key of this.moduleOrder) {
       if (key === 'build' && this.hasActiveBuild && this.settings.show_build_in_pill) return 'build';
@@ -409,6 +432,7 @@ class IslandStore {
 
   get targetWidth(): number {
     if (this.mode === 'idle' || this.isCollapsing) {
+      if (this.isMeetingActive) return 340;
       const active = this.activePillModule;
       if (active === 'focus') return 340;
       if (active === 'agent') return 340;
@@ -501,7 +525,9 @@ class IslandStore {
   async expand() {
     let targetMode: IslandMode;
     const activePill = this.activePillModule;
-    if (this.isFocusActive) {
+    if (this.isMeetingActive) {
+      targetMode = 'hardware';
+    } else if (this.isFocusActive) {
       targetMode = 'focus';
     } else if (activePill === 'agent' || activePill === 'build') {
       targetMode = 'agent';
@@ -673,6 +699,18 @@ class IslandStore {
 
   async openMedia() {
     await this.setMode('media');
+  }
+
+  async focusMeetingApp() {
+    if (!this.meeting) return;
+    try {
+      await invoke('focus_meeting_app', {
+        windowId: this.meeting.window_id || null,
+        platform: this.meeting.platform,
+      });
+    } catch (err) {
+      console.debug('Failed to focus meeting app:', err);
+    }
   }
 
   async openSystem() {
@@ -2302,6 +2340,36 @@ class IslandStore {
       console.debug('Failed to register prayer listener:', err);
     }
 
+    // 11c. Meeting & Call Detection Listener
+    try {
+      this.unlistenMeeting = await listen<MeetingInfo>('meeting-status-change', async (event) => {
+        const prevActive = this.meeting?.is_active ?? false;
+        this.meeting = event.payload;
+        if (event.payload.is_active && !prevActive) {
+          await this.syncNativeWindow();
+        } else if (!event.payload.is_active && prevActive) {
+          await this.syncNativeWindow();
+        }
+      });
+
+      // Fetch initial meeting status
+      try {
+        const initMeeting = await invoke<MeetingInfo | null>('get_meeting_status');
+        if (initMeeting) {
+          this.meeting = initMeeting;
+        }
+      } catch {}
+
+      // 1-second ticker for meeting duration
+      this.meetingTickerTimer = setInterval(() => {
+        if (this.meeting?.is_active) {
+          this.meeting.elapsed_seconds += 1;
+        }
+      }, 1000);
+    } catch (err) {
+      console.debug('Failed to register meeting listener:', err);
+    }
+
     // 12. Settings updated / Reposition events from IPC or Tray
     try {
       this.unlistenSettings = await listen<IslandSettings>('settings-updated', (event) => {
@@ -2334,6 +2402,14 @@ class IslandStore {
     if (this.unlistenPrayerAlert) {
       this.unlistenPrayerAlert();
       this.unlistenPrayerAlert = null;
+    }
+    if (this.unlistenMeeting) {
+      this.unlistenMeeting();
+      this.unlistenMeeting = null;
+    }
+    if (this.meetingTickerTimer) {
+      clearInterval(this.meetingTickerTimer);
+      this.meetingTickerTimer = null;
     }
     if (this.prayerTickerTimer) {
       clearInterval(this.prayerTickerTimer);

@@ -714,6 +714,62 @@ def cmd_prayer(args):
 
     return 0
 
+def cmd_meeting(args):
+    action = getattr(args, "meeting_action", None) or "status"
+
+    if action == "focus":
+        import subprocess
+        platform = getattr(args, "platform", None) or "zoom"
+        cmd = ["wmctrl", "-xa", platform]
+        try:
+            subprocess.run(cmd, check=True)
+            print(f"✓ Brought {platform} to foreground")
+            return 0
+        except Exception as e:
+            print(f"Error bringing window to foreground: {e}")
+            return 1
+
+    # Check active meeting status
+    import subprocess
+    try:
+        pactl = subprocess.check_output(["pactl", "list", "source-outputs"], text=True)
+    except Exception as e:
+        print(f"Error checking audio streams: {e}")
+        return 1
+
+    wmctrl_out = ""
+    try:
+        wmctrl_out = subprocess.check_output(["wmctrl", "-lx"], text=True)
+    except Exception:
+        pass
+
+    meeting_detected = None
+    lower_pa = pactl.lower()
+    lower_wm = wmctrl_out.lower()
+
+    if "zoom" in lower_pa or "zoom meeting" in lower_wm:
+        meeting_detected = ("Zoom", "🟦", "Zoom Meeting")
+    elif "discord" in lower_pa or "vesktop" in lower_pa:
+        meeting_detected = ("Discord", "🎧", "Discord Voice Channel")
+    elif "slack" in lower_pa:
+        meeting_detected = ("Slack", "💬", "Slack Huddle")
+    elif "teams" in lower_pa:
+        meeting_detected = ("Microsoft Teams", "👥", "Teams Meeting")
+    elif ("meet -" in lower_wm or "meet –" in lower_wm or "meet.google.com" in lower_wm) and any(b in lower_pa for b in ["chrome", "firefox", "brave"]):
+        meeting_detected = ("Google Meet", "📹", "Google Meet Call")
+    elif any(b in lower_pa for b in ["chrome", "firefox", "brave"]):
+        meeting_detected = ("Browser Call", "📞", "Active WebRTC Call")
+
+    if meeting_detected:
+        name, icon, title = meeting_detected
+        print(f"{icon} Active Call Detected: {name}")
+        print(f"   Title: {title}")
+        print(f"   Status: Microphone active in PipeWire/PulseAudio")
+    else:
+        print("⚪ No active meeting or call detected (Microphone is idle).")
+
+    return 0
+
 def cmd_build(args):
     if getattr(args, "clear", False) or args.state == "idle":
         payload = {
@@ -1568,6 +1624,13 @@ def main():
     p_prayer_test = prayer_subs.add_parser("test", help="Test trigger a prayer notification")
     p_prayer_test.add_argument("name", nargs="?", default="Maghrib", help="Prayer name to test (default: Maghrib)")
 
+    # Meeting sub-command
+    p_meeting = subparsers.add_parser("meeting", help="Active Meeting / Call status (Zoom, Discord, Meet, Slack, Teams)")
+    meeting_subs = p_meeting.add_subparsers(dest="meeting_action")
+    meeting_subs.add_parser("status", help="Detect active meeting & mic streams")
+    p_meet_focus = meeting_subs.add_parser("focus", help="Bring meeting application to foreground")
+    p_meet_focus.add_argument("platform", nargs="?", default="zoom", help="Platform name (zoom, discord, slack, teams, chrome)")
+
     args = parser.parse_args()
 
     if args.subcommand == "toggle":
@@ -1602,6 +1665,8 @@ def main():
         sys.exit(cmd_focus(args))
     elif args.subcommand == "prayer":
         sys.exit(cmd_prayer(args))
+    elif args.subcommand == "meeting":
+        sys.exit(cmd_meeting(args))
     elif args.subcommand == "build":
         sys.exit(cmd_build(args))
     elif args.subcommand == "notify":

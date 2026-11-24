@@ -12,6 +12,7 @@ mod tray;
 mod weather;
 mod todo;
 mod prayer;
+mod meetings;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -1086,6 +1087,16 @@ fn apply_global_shortcuts(app: &tauri::AppHandle) {
     }
 }
 
+#[tauri::command]
+fn get_meeting_status() -> Result<Option<meetings::MeetingInfo>, String> {
+    Ok(meetings::detect_active_meeting())
+}
+
+#[tauri::command]
+fn focus_meeting_app(window_id: Option<String>, platform: meetings::MeetingPlatform) -> Result<(), String> {
+    meetings::focus_meeting_window(window_id.as_deref(), &platform)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
@@ -1280,6 +1291,9 @@ pub fn run() {
             // Background worker: PipeWire / PulseAudio Real-Time Equalizer Spectrum Monitor
             audio_monitor::start_audio_monitor(app.handle().clone(), Arc::new(AtomicBool::new(true)));
 
+            // Background worker: Meeting & Active Call Stream Monitor (Zoom, Discord, Google Meet, Slack, Teams)
+            meetings::start_meeting_monitor(app.handle().clone(), Arc::new(AtomicBool::new(true)));
+
             // Background worker: MPRIS media & System Telemetry updates
             let handle = app.handle().clone();
             std::thread::spawn(move || {
@@ -1425,6 +1439,8 @@ pub fn run() {
             sync_todos_from_markdown,
             get_prayer_schedule,
             test_prayer_notification,
+            get_meeting_status,
+            focus_meeting_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running dynamic-island application");

@@ -274,6 +274,18 @@
     islandState.openPrayer();
   }
 
+  function handleMeetingClick(e: MouseEvent) {
+    e.stopPropagation();
+    // In meeting mode, clicking the island opens the Hardware Audio controls by default
+    islandState.openHardware();
+  }
+
+  function handleMeetingAppRaise(e: MouseEvent) {
+    e.stopPropagation();
+    // Bring the meeting window directly to front
+    islandState.focusMeetingApp();
+  }
+
   function handleToggleMic(e: MouseEvent) {
     e.stopPropagation();
     islandState.toggleMicMute();
@@ -368,7 +380,77 @@
       class:is-collapsing={islandState.isCollapsing}
       class:is-expanding={islandState.isExpanding}
     >
-      {#if islandState.activePillModule === 'focus' && islandState.isFocusActive}
+      {#if islandState.isMeetingActive && islandState.meeting}
+        <!-- Compact Pill with Live Meeting / Call Mode (Zoom, Discord, Meet, Slack, Teams) -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <div
+          class="pill-content meeting-pill"
+          onclick={handleMeetingClick}
+          role="button"
+          tabindex="0"
+          title="In Call: {islandState.meeting.title} • Click to open Hardware Audio Controls"
+        >
+          <div class="pill-left">
+            <PixelMascot size="sm" />
+            <div
+              class="meeting-icon-bubble"
+              class:mic-active={islandState.meeting.mic_active && !islandState.meeting.is_muted}
+              onclick={handleMeetingAppRaise}
+              role="button"
+              tabindex="0"
+              title="Click to raise {islandState.meeting.app_name} to front"
+            >
+              <span class="meeting-platform-icon">
+                {#if islandState.meeting.platform === 'zoom'}
+                  🟦
+                {:else if islandState.meeting.platform === 'discord'}
+                  🎧
+                {:else if islandState.meeting.platform === 'google_meet'}
+                  📹
+                {:else if islandState.meeting.platform === 'slack'}
+                  💬
+                {:else if islandState.meeting.platform === 'teams'}
+                  👥
+                {:else}
+                  📞
+                {/if}
+              </span>
+              <span
+                class="meeting-mic-dot"
+                class:active={islandState.meeting.mic_active && !islandState.meeting.is_muted}
+                class:muted={islandState.meeting.is_muted || !islandState.meeting.mic_active}
+              ></span>
+            </div>
+            <div class="pill-media-text meeting-pill-text">
+              <span class="pill-track-title meeting-title-text">{islandState.meeting.title}</span>
+              <span class="pill-track-artist meeting-sub-text">
+                {islandState.meeting.app_name} • {islandState.meetingFormattedDuration}
+              </span>
+            </div>
+          </div>
+          <div class="pill-right">
+            <button
+              type="button"
+              class="meeting-raise-app-btn"
+              onclick={handleMeetingAppRaise}
+              title="Bring {islandState.meeting.app_name} window to front"
+            >
+              ⤢ Focus App
+            </button>
+            <span
+              class="pill-badge pill-badge-meeting"
+              class:muted={islandState.meeting.is_muted || !islandState.meeting.mic_active}
+              title="Microphone is {islandState.meeting.is_muted || !islandState.meeting.mic_active ? 'Muted' : 'Live'}"
+            >
+              {#if islandState.meeting.is_muted || !islandState.meeting.mic_active}
+                🔴 Muted
+              {:else}
+                🟢 Live
+              {/if}
+            </span>
+          </div>
+        </div>
+      {:else if islandState.activePillModule === 'focus' && islandState.isFocusActive}
         <!-- Compact Pill with Active Focus Mode (Funny UI) -->
         <div class="pill-content focus-pill">
           <div class="pill-left">
@@ -1346,6 +1428,102 @@
     border: 1px solid rgba(245, 158, 11, 0.45);
     color: #fbbf24;
     font-weight: 600;
+  }
+
+  /* Meeting Pill Capsule Styles */
+  .meeting-pill {
+    cursor: pointer;
+  }
+
+  .meeting-icon-bubble {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    flex-shrink: 0;
+  }
+
+  .meeting-icon-bubble.mic-active {
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    border-color: rgba(16, 185, 129, 0.6);
+  }
+
+  .meeting-platform-icon {
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .meeting-mic-dot {
+    position: absolute;
+    bottom: -1px;
+    right: -1px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    border: 1px solid #000;
+  }
+
+  .meeting-mic-dot.active {
+    background: #10b981;
+    box-shadow: 0 0 6px #10b981;
+    animation: statusPulse 1.2s infinite ease-in-out;
+  }
+
+  .meeting-mic-dot.muted {
+    background: #ef4444;
+    box-shadow: 0 0 4px #ef4444;
+  }
+
+  .meeting-title-text {
+    font-weight: 700;
+    color: #f8fafc;
+    letter-spacing: -0.2px;
+  }
+
+  .meeting-sub-text {
+    font-size: 10px;
+    font-weight: 600;
+    color: #a7f3d0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pill-badge-meeting {
+    background: rgba(16, 185, 129, 0.2);
+    border: 1px solid rgba(16, 185, 129, 0.5);
+    color: #6ee7b7;
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 0.3px;
+  }
+
+  .pill-badge-meeting.muted {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+  }
+
+  .meeting-raise-app-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 9px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 9999px;
+    cursor: pointer;
+    margin-right: 4px;
+    transition: all 0.15s ease;
+  }
+
+  .meeting-raise-app-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.25);
   }
 
   .pill-badge-prayer-idle {

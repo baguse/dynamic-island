@@ -372,3 +372,16 @@ export interface PrayerSchedule {
   qibla_bearing: number;
   updated_at: number;
 }
+
+export type MeetingPlatform = 'zoom' | 'discord' | 'google_meet' | 'slack' | 'teams' | 'webex' | 'other';
+
+export interface MeetingInfo {
+  is_active: boolean;
+  platform: MeetingPlatform;
+  app_name: string;
+  title: string;
+  mic_active: boolean;
+  is_muted: boolean;
+  elapsed_seconds: number;
+  window_id?: string | null;
+}
