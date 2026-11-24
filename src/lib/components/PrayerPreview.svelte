@@ -200,7 +200,7 @@
             </span>
             {#if currentPrayer}
               <span class="current-prayer-pill" title="Current active prayer window">
-                <span class="current-dot"></span> Now: {currentPrayer}
+                <span class="current-dot"></span> Now: {currentPrayer.label}
               </span>
             {/if}
           </div>
@@ -593,7 +593,7 @@
   /* Top Grid: Hero Card + Qibla */
   .prayer-top-grid {
     display: grid;
-    grid-template-columns: 1fr 190px;
+    grid-template-columns: minmax(0, 1fr) 150px;
     gap: 12px;
   }
 
@@ -601,14 +601,15 @@
     background: linear-gradient(135deg, rgba(13, 148, 136, 0.22) 0%, rgba(6, 78, 59, 0.45) 50%, rgba(15, 23, 42, 0.75) 100%);
     border: 1px solid rgba(45, 212, 191, 0.35);
     border-radius: 16px;
-    padding: 16px 18px;
+    padding: 14px 16px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    gap: 14px;
+    gap: 12px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.1);
     position: relative;
     overflow: hidden;
+    min-width: 0;
   }
 
   .hero-ambient-glow {
@@ -836,24 +837,27 @@
 
   /* Bottom Section */
   .hero-bottom-section {
-    padding-top: 12px;
+    padding-top: 10px;
     border-top: 1px solid rgba(255, 255, 255, 0.09);
     display: flex;
     justify-content: space-between;
-    align-items: flex-end;
+    align-items: center;
     position: relative;
     z-index: 1;
-    gap: 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
   }
 
   .hero-countdown-block {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
+    flex-shrink: 0;
   }
 
   .countdown-caption {
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -863,14 +867,14 @@
   .countdown-digit-row {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
   }
 
   .digit-box {
     background: rgba(15, 23, 42, 0.6);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 7px;
-    padding: 3px 6px;
+    border-radius: 6px;
+    padding: 2px 5px;
     display: inline-flex;
     align-items: baseline;
     gap: 2px;
@@ -885,7 +889,7 @@
   }
 
   .digit-val {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
     color: #f8fafc;
@@ -900,20 +904,20 @@
   }
 
   .digit-lbl {
-    font-size: 9px;
+    font-size: 8px;
     font-weight: 600;
     color: rgba(255, 255, 255, 0.45);
     text-transform: uppercase;
   }
 
   .digit-colon {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
     color: rgba(255, 255, 255, 0.3);
   }
 
   .countdown-tomorrow-tag {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
     color: #5eead4;
     background: rgba(45, 212, 191, 0.12);
@@ -924,24 +928,29 @@
 
   .hero-actions {
     display: flex;
-    gap: 8px;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
   }
 
   .hero-action-btn {
     border: none;
-    border-radius: 8px;
-    padding: 6px 11px;
+    border-radius: 7px;
+    padding: 5px 9px;
     font-size: 11px;
     font-weight: 600;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
     transition: all 0.15s ease;
   }
 
   .hero-action-btn .btn-icon {
-    font-size: 12px;
+    font-size: 11px;
+    line-height: 1;
   }
 
   .hero-action-btn.audio-btn {
